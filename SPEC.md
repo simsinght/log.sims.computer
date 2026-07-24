@@ -45,9 +45,14 @@ Design rule: anything Popfeed's lexicon *can* express goes in Popfeed records (s
 
 ## Imports
 
-Two sources, both one-shot CLI scripts writing records via the PDS API:
+Two sources, both one-shot CLI scripts writing records via the PDS API (app-password auth):
 
-1. **Trakt** (years of TV + movie history, no VIP): JSON from [`traktexport`](https://pypi.org/project/traktexport/) — history, ratings, watchlist.
+1. **Trakt** (years of TV + movie history): the **official Trakt export zip** — the shape any onboarding user would bring. All JSON; the files that matter:
+   - `watched-history-*.json` (multi-part, glob the suffix): one event per play — `watched_at`, `action`, `type: movie|episode`, full external ids (`tmdb`, `imdb`, `tvdb`, `trakt`) plus episode `season`/`number` and parent `show`. This is the diary source → `computer.sims.log.watch` records and Popfeed `watchedEpisodes`.
+   - `ratings-{movies,shows,seasons,episodes}*.json` → rel/rating data.
+   - `lists-watchlist.json`, `lists-favorites.json`, `lists-list-<id>-<slug>.json` (custom lists) → `social.popfeed.feed.list` + listItems.
+   - `watched-{movies,shows}*.json`: per-title aggregates (`plays`, `last_watched_at`) — useful for cross-checking import completeness, not a primary source.
+   - Ignore: user-*, network-*, hidden-*, likes-*, collection-*, comments/notes (revisit comments later — they carry review text).
 2. **Letterboxd** (movies, ~2025→now, including tags): official CSV export (diary.csv carries tags, ratings, rewatch flags).
 
 Dedup rule: Letterboxd wins for movies in the overlap window; Trakt is authoritative for TV.
