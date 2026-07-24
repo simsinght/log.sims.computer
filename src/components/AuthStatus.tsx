@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 interface SessionInfo {
-  did: string;
-  handle: string;
+  authenticated: boolean;
+  did?: string;
+  handle?: string;
 }
 
 export default function AuthStatus() {
@@ -15,7 +16,9 @@ export default function AuthStatus() {
   useEffect(() => {
     fetch("/api/auth/session")
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: SessionInfo | null) => setSession(data))
+      .then((data: SessionInfo | null) =>
+        setSession(data?.authenticated ? data : null),
+      )
       .catch(() => setSession(null))
       .finally(() => setLoaded(true));
   }, []);
