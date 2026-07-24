@@ -63,6 +63,8 @@ Preview contract (what the app must honor):
 - **Design rule: all browser-visible traffic stays same-origin.** Verify's Playwright collector drops cross-origin network traffic, so TMDB (and anything else) is proxied through the app's own API routes — which we want anyway to keep keys server-side.
 - `TMDB_API_KEY` arrives via Aviator's account secret store, referenced in the verify preview config.
 
+Verification auth (from the OAuth milestone onward): verify's collector cannot complete an interactive OAuth dance, so the app supports a **second auth path** — app-password session via `com.atproto.server.createSession` — used by a throwaway Bluesky **test account** whose credentials (`ATP_TEST_HANDLE`, `ATP_TEST_APP_PASSWORD`) live in the Aviator secret store and flow into preview via the config's `secrets:` list. A verify skill at `.aviator/verify/skills/` documents the login flow for the collector. During verification, records land in the test account's PDS — the owner's real account is only ever touched via OAuth at manual sign-off. The app-password path double-serves as the non-interactive auth for the importers.
+
 `infra/e2b.Dockerfile` is the source of the custom template (pasted into Aviator's custom-template builder; its build pipeline forbids ADD/COPY, and Aviator injects claude-code + git into the image). The image is base environment only — the preview sandbox checks out the working branch itself, so the setup script does the install/build.
 
 ## Roadmap
