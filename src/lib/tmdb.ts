@@ -84,6 +84,49 @@ async function tmdbFetch(
   return body.results ?? [];
 }
 
+export interface TmdbTitle {
+  tmdbId: number;
+  mediaType: MediaType;
+  title: string;
+  year: string | null;
+}
+
+const titleCache = new Map<string, TmdbTitle>();
+
+async function tmdbDetail(path: string): Promise<TmdbRawResult> {
+  const key = apiKey();
+  if (!key) throw new TmdbError("TMDB_API_KEY not configured", 503);
+
+  const url = new URL(`${TMDB_BASE_URL}${path}`);
+  url.searchParams.set("api_key", key);
+
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) {
+    throw new TmdbError(`TMDB request failed (${res.status})`, 502);
+  }
+  return (await res.json()) as TmdbRawResult;
+}
+
+export async function getTitle(
+  type: MediaType,
+  id: number,
+): Promise<TmdbTitle> {
+  const cacheKey = `${type}:${id}`;
+  const cached = titleCache.get(cacheKey);
+  if (cached) return cached;
+
+  const raw = await tmdbDetail(`/${type}/${id}`);
+  const normalized = normalize(raw, type);
+  const title: TmdbTitle = {
+    tmdbId: normalized.tmdbId,
+    mediaType: type,
+    title: normalized.title,
+    year: normalized.year,
+  };
+  titleCache.set(cacheKey, title);
+  return title;
+}
+
 export async function search(
   query: string,
   type: SearchType,

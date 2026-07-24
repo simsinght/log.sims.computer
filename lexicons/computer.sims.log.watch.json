@@ -1,0 +1,65 @@
+{
+  "lexicon": 1,
+  "id": "computer.sims.log.watch",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "description": "A single diary entry: the user watched a movie or TV work at a point in time, with free-form tags. Adds the per-watch diary layer on top of the Popfeed listItem record referenced by 'subject'.",
+      "record": {
+        "type": "object",
+        "required": ["subject", "tmdbId", "mediaType", "watchedAt", "createdAt"],
+        "properties": {
+          "subject": {
+            "type": "ref",
+            "ref": "com.atproto.repo.strongRef",
+            "description": "Strong reference to the social.popfeed.feed.listItem record for this work."
+          },
+          "tmdbId": {
+            "type": "string",
+            "description": "Denormalized TMDB id of the work, for resilience if the subject cannot be resolved."
+          },
+          "mediaType": {
+            "type": "string",
+            "enum": ["movie", "tv"],
+            "description": "Denormalized media type of the work."
+          },
+          "watchedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When the watch happened."
+          },
+          "rewatch": {
+            "type": "boolean",
+            "description": "Whether this watch was a rewatch."
+          },
+          "season": {
+            "type": "integer",
+            "description": "Season number, for TV watches."
+          },
+          "episode": {
+            "type": "integer",
+            "description": "Episode number, for TV watches."
+          },
+          "tags": {
+            "type": "array",
+            "description": "Free-form, lowercase, trimmed tags applied to this watch.",
+            "items": { "type": "string", "maxLength": 640, "maxGraphemes": 64 },
+            "maxLength": 64
+          },
+          "note": {
+            "type": "string",
+            "description": "Optional short note about the watch.",
+            "maxLength": 3000,
+            "maxGraphemes": 300
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When this record was created."
+          }
+        }
+      }
+    }
+  }
+}
