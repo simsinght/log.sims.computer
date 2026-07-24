@@ -60,6 +60,7 @@ export default function LoginPage() {
             id="oauth-handle"
             name="handle"
             type="text"
+            autoComplete="username"
             required
             value={oauthHandle}
             onChange={(e) => setOauthHandle(e.target.value)}
@@ -87,6 +88,7 @@ export default function LoginPage() {
           <form onSubmit={onPasswordLogin} className="mt-4 flex flex-col gap-3">
             <input
               type="text"
+              autoComplete="username"
               required
               value={pwHandle}
               onChange={(e) => setPwHandle(e.target.value)}
@@ -95,6 +97,7 @@ export default function LoginPage() {
             />
             <input
               type="password"
+              autoComplete="current-password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}

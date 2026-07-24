@@ -16,7 +16,7 @@ Navigate to `/api/auth/test-login`. If test credentials are configured in this e
 ## Surfaces
 
 - `/login` — OAuth handle form (do not submit) plus an "app password" disclosure section.
-- `GET /api/auth/session` — `{did, handle}` when authed, 401 otherwise. `POST /api/auth/logout` clears the session.
+- `GET /api/auth/session` — always 200: `{authenticated: true, did, handle}` or `{authenticated: false}`. (Deliberately not a 401 — a 401 on this probe pollutes the browser console on every logged-out page load.) `POST /api/auth/logout` clears the session.
 
 - `/` — identity/home page with a link to search.
 - `/search` — TMDB-backed search. The input is debounced (~300ms): after typing, wait for the grid to update before judging results. Posters must load through `/_next/image?...` on this origin — a visible poster implies the same-origin rule held. Nonsense queries show a no-results state, not an error. A movie/TV/all filter toggle is present.
