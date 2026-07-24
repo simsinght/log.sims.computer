@@ -102,7 +102,8 @@ export default function SearchPage() {
 
   useEffect(() => {
     fetch("/api/auth/session")
-      .then((res) => setSignedIn(res.ok))
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setSignedIn(Boolean(data?.authenticated)))
       .catch(() => setSignedIn(false));
   }, []);
 
