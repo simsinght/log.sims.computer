@@ -45,9 +45,14 @@ Design rule: anything Popfeed's lexicon *can* express goes in Popfeed records (s
 
 ## Imports
 
-Two sources, both one-shot CLI scripts writing records via the PDS API:
+Two sources, both one-shot CLI scripts writing records via the PDS API (app-password auth):
 
-1. **Trakt** (years of TV + movie history, no VIP): JSON from [`traktexport`](https://pypi.org/project/traktexport/) — history, ratings, watchlist.
+1. **Trakt** (years of TV + movie history): the **official Trakt export zip** — the shape any onboarding user would bring. All JSON; the files that matter:
+   - `watched-history-*.json` (multi-part, glob the suffix): one event per play — `watched_at`, `action`, `type: movie|episode`, full external ids (`tmdb`, `imdb`, `tvdb`, `trakt`) plus episode `season`/`number` and parent `show`. This is the diary source → `computer.sims.log.watch` records and Popfeed `watchedEpisodes`.
+   - `ratings-{movies,shows,seasons,episodes}*.json` → rel/rating data.
+   - `lists-watchlist.json`, `lists-favorites.json`, `lists-list-<id>-<slug>.json` (custom lists) → `social.popfeed.feed.list` + listItems.
+   - `watched-{movies,shows}*.json`: per-title aggregates (`plays`, `last_watched_at`) — useful for cross-checking import completeness, not a primary source.
+   - Ignore: user-*, network-*, hidden-*, likes-*, collection-*, comments/notes (revisit comments later — they carry review text).
 2. **Letterboxd** (movies, ~2025→now, including tags): official CSV export (diary.csv carries tags, ratings, rewatch flags).
 
 Dedup rule: Letterboxd wins for movies in the overlap window; Trakt is authoritative for TV.
@@ -62,6 +67,8 @@ Preview contract (what the app must honor):
 - The app must respect `PREVIEW_URL` as its public base URL (atproto OAuth client metadata, redirect URIs) — preview URLs are real public HTTPS, so OAuth can genuinely work in preview.
 - **Design rule: all browser-visible traffic stays same-origin.** Verify's Playwright collector drops cross-origin network traffic, so TMDB (and anything else) is proxied through the app's own API routes — which we want anyway to keep keys server-side.
 - `TMDB_API_KEY` arrives via Aviator's account secret store, referenced in the verify preview config.
+
+Verification auth (from the OAuth milestone onward): verify's collector cannot complete an interactive OAuth dance, so the app supports a **second auth path** — app-password session via `com.atproto.server.createSession` — used by a throwaway Bluesky **test account** whose credentials (`ATP_TEST_HANDLE`, `ATP_TEST_APP_PASSWORD`) live in the Aviator secret store and flow into preview via the config's `secrets:` list. A verify skill at `.aviator/verify/skills/` documents the login flow for the collector. During verification, records land in the test account's PDS — the owner's real account is only ever touched via OAuth at manual sign-off. The app-password path double-serves as the non-interactive auth for the importers.
 
 `infra/e2b.Dockerfile` is the source of the custom template (pasted into Aviator's custom-template builder; its build pipeline forbids ADD/COPY, and Aviator injects claude-code + git into the image). The image is base environment only — the preview sandbox checks out the working branch itself, so the setup script does the install/build.
 
