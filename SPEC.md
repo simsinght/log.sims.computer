@@ -54,7 +54,16 @@ Dedup rule: Letterboxd wins for movies in the overlap window; Trakt is authorita
 
 ## Development workflow
 
-Built via **Aviator runbooks/verify**: agents implement against this repo in sandboxes (ssh sandbox on the NAS for coding stress-testing, e2b cloud for preview), changes land as PRs verified by Aviator verify. Repo-level Aviator config, verify skills, and possibly a custom sandbox image live in this repo as they materialize.
+Built via **Aviator runbooks/verify** on e2b cloud sandboxes, with a **custom preview image**: agents implement against this repo, changes land as PRs, and verify exercises the running app through preview. Verify's preview drives the app via Playwright against a public per-sandbox URL.
+
+Preview contract (what the app must honor):
+
+- `.aviator/scripts/preview-setup.sh` builds and starts the app on **port 3000**, backgrounded, and exits 0 once it responds. It receives `PREVIEW_URL` (the public https URL) and any configured secrets as env vars, runs as root with cwd = repo root.
+- The app must respect `PREVIEW_URL` as its public base URL (atproto OAuth client metadata, redirect URIs) — preview URLs are real public HTTPS, so OAuth can genuinely work in preview.
+- **Design rule: all browser-visible traffic stays same-origin.** Verify's Playwright collector drops cross-origin network traffic, so TMDB (and anything else) is proxied through the app's own API routes — which we want anyway to keep keys server-side.
+- `TMDB_API_KEY` arrives via Aviator's account secret store, referenced in the verify preview config.
+
+`infra/e2b.Dockerfile` is the source of the custom template (pasted into Aviator's custom-template builder; its build pipeline forbids ADD/COPY, and Aviator injects claude-code + git into the image). The image is base environment only — the preview sandbox checks out the working branch itself, so the setup script does the install/build.
 
 ## Roadmap
 
