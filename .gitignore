@@ -6,3 +6,4 @@ out/
 *.db
 *.sqlite
 .DS_Store
+tsconfig.tsbuildinfo
