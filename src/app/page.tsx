@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Home() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ededed]">
@@ -10,6 +12,12 @@ export default function Home() {
           <p className="text-lg text-gray-400">
             Personal movie & TV log on atproto
           </p>
+          <Link
+            href="/search"
+            className="inline-block mt-6 rounded-lg border border-gray-700 px-5 py-2.5 text-sm font-medium text-gray-200 transition-colors hover:border-gray-500 hover:text-white"
+          >
+            Search movies & TV
+          </Link>
         </div>
 
         {/* Placeholder diary/poster-grid section */}
