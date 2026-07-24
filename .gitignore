@@ -1,7 +1,8 @@
 node_modules/
 .next/
+out/
 .env
-.env.local
+.env*.local
 *.db
 *.sqlite
 .DS_Store
