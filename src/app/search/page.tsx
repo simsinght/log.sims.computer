@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import LogDialog, { LogTarget } from "@/components/LogDialog";
 
 type MediaType = "movie" | "tv";
 type SearchType = MediaType | "all";
@@ -33,7 +34,15 @@ function useDebounced<T>(value: T, delay: number): T {
   return debounced;
 }
 
-function PosterCard({ result }: { result: SearchResult }) {
+function PosterCard({
+  result,
+  signedIn,
+  onLog,
+}: {
+  result: SearchResult;
+  signedIn: boolean;
+  onLog: (target: LogTarget) => void;
+}) {
   return (
     <div className="group">
       <div className="relative aspect-[2/3] w-full overflow-hidden rounded-md bg-gray-800">
@@ -53,6 +62,21 @@ function PosterCard({ result }: { result: SearchResult }) {
         <span className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-200">
           {result.mediaType === "tv" ? "TV" : "Movie"}
         </span>
+        {signedIn && (
+          <button
+            onClick={() =>
+              onLog({
+                tmdbId: result.tmdbId,
+                mediaType: result.mediaType,
+                title: result.title,
+                year: result.year,
+              })
+            }
+            className="absolute inset-x-1 bottom-1 rounded bg-white/90 py-1.5 text-xs font-semibold text-black opacity-0 transition-opacity hover:bg-white group-hover:opacity-100 focus:opacity-100"
+          >
+            Log
+          </button>
+        )}
       </div>
       <div className="mt-2">
         <p className="truncate text-sm font-medium" title={result.title}>
@@ -71,8 +95,16 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
+  const [logTarget, setLogTarget] = useState<LogTarget | null>(null);
 
   const debouncedQuery = useDebounced(query.trim(), 300);
+
+  useEffect(() => {
+    fetch("/api/auth/session")
+      .then((res) => setSignedIn(res.ok))
+      .catch(() => setSignedIn(false));
+  }, []);
 
   useEffect(() => {
     if (!debouncedQuery) {
@@ -183,11 +215,17 @@ export default function SearchPage() {
               <PosterCard
                 key={`${result.mediaType}-${result.tmdbId}`}
                 result={result}
+                signedIn={signedIn}
+                onLog={setLogTarget}
               />
             ))}
           </div>
         )}
       </div>
+
+      {logTarget && (
+        <LogDialog target={logTarget} onClose={() => setLogTarget(null)} />
+      )}
     </div>
   );
 }

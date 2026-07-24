@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { getAuthedAgent } from "@/lib/atproto/agent";
+import { getSession } from "@/lib/session";
+import { buildDiary, type DiaryDay } from "@/lib/diary";
+import Diary from "@/components/Diary";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+function Landing() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ededed]">
       <div className="container mx-auto px-4 py-12 max-w-6xl">
-        {/* Wordmark and description */}
         <div className="text-center mb-16">
           <h1 className="text-5xl md:text-6xl font-bold tracking-tight mb-4">
             log.sims.computer
@@ -20,17 +25,12 @@ export default function Home() {
           </Link>
         </div>
 
-        {/* Placeholder diary/poster-grid section */}
         <div className="mt-12">
           <div className="border-2 border-dashed border-gray-800 rounded-lg p-12 text-center">
             <div className="flex flex-col items-center justify-center space-y-4">
               <div className="grid grid-cols-4 gap-2 opacity-20">
-                {/* Poster grid skeleton */}
                 {[...Array(8)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="w-16 h-24 bg-gray-800 rounded"
-                  ></div>
+                  <div key={i} className="w-16 h-24 bg-gray-800 rounded"></div>
                 ))}
               </div>
               <p className="text-gray-500 text-lg mt-6">
@@ -42,4 +42,21 @@ export default function Home() {
       </div>
     </div>
   );
+}
+
+export default async function Home() {
+  const session = await getSession();
+  if (!session.did) return <Landing />;
+
+  const agent = await getAuthedAgent();
+  if (!agent || !agent.did) return <Landing />;
+
+  let days: DiaryDay[] = [];
+  try {
+    days = await buildDiary(agent, agent.did);
+  } catch {
+    days = [];
+  }
+
+  return <Diary handle={session.handle ?? agent.did} days={days} />;
 }
