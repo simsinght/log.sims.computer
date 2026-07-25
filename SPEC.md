@@ -28,10 +28,18 @@ Follows the [Bookhive](https://github.com/nperez0111/bookhive) pattern:
 
 **Interop with Popfeed is a requirement**: the primary records are `social.popfeed.feed.*`, so this log is visible to/from [Popfeed](https://popfeed.social) natively. Popfeed is closed-source; our schema copy comes from [Bookhive's vendored snapshot](https://github.com/nperez0111/bookhive), so **before writing any records, inspect live `social.popfeed.feed.*` records from real users' PDSs** (com.atproto.repo.listRecords) to confirm current shapes. Precedent for third-party writers: the paperbnd KOReader plugin writes `social.popfeed.feed.listItem`.
 
+> **Live-confirmed shapes (2026-07-24).** We read real `social.popfeed.feed.*` records from a Popfeed maintainer's PDS (`did:plc:6hbqm2oftpotwuw7gvvrui3i`, PDS `https://knotbin.xyz`) and corrected the vendored copy. The corrections below override the Bookhive snapshot.
+
 Primary (Popfeed interop):
 
-- **`social.popfeed.feed.listItem`** — one per tracked work: `identifiers` (tmdbId, tmdbTvSeriesId, imdbId, …), `creativeWorkType` (`movie` / `tv_show` / `tv_season` / `tv_episode`), `status` (`#finished` / `#in_progress` / `#backlog` / `#abandoned`), `listUri`, `title`, `addedAt` / `startedAt` / `completedAt`, `watchedEpisodes[{seasonNumber, episodeNumber, tmdbId}]`, poster/backdrop blobs.
-- **`social.popfeed.feed.list`** — named lists (`name`, `listType`, `itemOrder[]` for ordering).
+- **`social.popfeed.feed.listItem`** — one per tracked work. There is **no `status` field and no `startedAt`/`completedAt`**: "watched" state is expressed purely by *which list the item is in*. Fields we write on every item (these draw the card on popfeed.social):
+  - `identifiers` — movies `{imdbId, tmdbId}`, TV `{tmdbId}`. **Always `tmdbId`, never `tmdbTvSeriesId`** (the latter is legacy/ignored). Upsert matches on `identifiers.tmdbId`.
+  - `creativeWorkType` (`movie` / `tv_show`), `listUri`, `listType` (mirrors the item's list), `title`, `addedAt`.
+  - Display: `releaseDate` (ISO datetime), `genres` (string[]), `posterUrl`, `poster` (uploaded blob), `backdropUrl`, `mainCredit` + `mainCreditRole` (movie → director / `"director"`; TV → network name / `"network"`).
+  - `watchedEpisodes[{tmdbId, seasonNumber, episodeNumber}]` where `tmdbId` is the **episode's** TMDB id as a string.
+  - `posterUrl` is `https://cdn.bsky.app/img/feed_fullsize/plain/{did}/{poster-blob-cid}@jpeg`; `backdropUrl` is the raw `image.tmdb.org/.../original/...` URL.
+- **`social.popfeed.feed.list`** — named lists: `{name, listType, authorDid, description, createdAt}` (`indexedAt` is server-set; newer records drop `ordered`). We find-or-create three media-specific lists instead of a single "Watched": movies → `watched_movies` ("Watched Movies"); TV logged per-episode → `currently_watching_tv_shows` ("Currently Watching"); TV logged whole → `watched_tv_shows` ("Watched Shows").
+- **`social.popfeed.feed.review`** exists on live PDSs with a `rating` (integer **1–10**), `text`, `isRevisit`, `containsSpoilers`, plus the same display fields as listItem. Not written yet — adopt later per the design rule below, dropping any homegrown rating/note equivalent.
 
 Companion namespace `computer.sims.log.*` (NSID authority = sims.computer, which we own) — only for what Popfeed's public schema can't express:
 

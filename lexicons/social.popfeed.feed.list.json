@@ -5,6 +5,7 @@
     "main": {
       "type": "record",
       "key": "tid",
+      "description": "Vendored from Bookhive's snapshot, then reconciled against live social.popfeed.feed.list records read from did:plc:6hbqm2oftpotwuw7gvvrui3i on 2026-07-24. Live records carry authorDid; the newer ones drop 'ordered'. listType values seen for TV/film: watched_movies, watched_tv_shows, currently_watching_tv_shows.",
       "record": {
         "type": "object",
         "required": ["name", "createdAt"],
@@ -13,6 +14,11 @@
             "type": "string",
             "description": "The name of the list.",
             "maxLength": 100
+          },
+          "authorDid": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the list author."
           },
           "description": {
             "type": "string",

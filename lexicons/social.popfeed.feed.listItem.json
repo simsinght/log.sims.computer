@@ -5,6 +5,7 @@
     "main": {
       "type": "record",
       "key": "tid",
+      "description": "Vendored from Bookhive's snapshot, then reconciled against live social.popfeed.feed.listItem records read from did:plc:6hbqm2oftpotwuw7gvvrui3i (a Popfeed maintainer) on 2026-07-24. Live records carry NO status/startedAt/completedAt; 'watched' state is expressed purely by which media-type-specific list the item lives in. Movies/TV use identifiers.tmdbId (never tmdbTvSeriesId); the card is drawn from title/genres/posterUrl/poster/backdropUrl/releaseDate/mainCredit/mainCreditRole.",
       "record": {
         "type": "object",
         "required": ["identifiers", "creativeWorkType", "addedAt", "listUri"],
@@ -31,10 +32,6 @@
               "track"
             ],
             "description": "The type of creative work this item represents."
-          },
-          "status": {
-            "type": "string",
-            "knownValues": ["#finished", "#in_progress", "#backlog", "#abandoned"]
           },
           "listUri": {
             "type": "string",
@@ -64,16 +61,6 @@
             "type": "string",
             "format": "datetime",
             "description": "Timestamp when the creative work was added to the list."
-          },
-          "startedAt": {
-            "type": "string",
-            "format": "datetime",
-            "description": "Timestamp when the user started the creative work. Most relevant for books, TV shows, and video games."
-          },
-          "completedAt": {
-            "type": "string",
-            "format": "datetime",
-            "description": "Timestamp when the user finished the creative work. Most relevant for books, TV shows, and video games."
           },
           "watchedEpisodes": {
             "type": "array",
