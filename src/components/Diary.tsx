@@ -36,13 +36,12 @@ function EntryRow({ entry }: { entry: DiaryEntry }) {
       {entry.tags.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {entry.tags.map((tag) => (
-            <Link
+            <span
               key={tag}
-              href={`/tags/${encodeURIComponent(tag)}`}
-              className="rounded-full bg-gray-800 px-2.5 py-0.5 text-xs text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
+              className="rounded-full bg-gray-800 px-2.5 py-0.5 text-xs text-gray-300"
             >
               {tag}
-            </Link>
+            </span>
           ))}
         </div>
       )}
