@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const records = await listAllRecords(agent, did, collection);
+  const records = await listAllRecords(agent, did, collection, 200);
   const matches = records.filter((r) => {
     if (collection === WATCH_COLLECTION) {
       return String(r.value.tmdbId) === tmdbId;
