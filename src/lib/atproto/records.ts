@@ -1,13 +1,35 @@
 import type { Agent } from "@atproto/api";
+import {
+  getWorkDetail,
+  getEpisodeTmdbId,
+  fetchPosterJpeg,
+  type WorkDetail,
+} from "@/lib/tmdb";
 
 export const LIST_COLLECTION = "social.popfeed.feed.list";
 export const LIST_ITEM_COLLECTION = "social.popfeed.feed.listItem";
 export const WATCH_COLLECTION = "computer.sims.log.watch";
 
-const WATCHED_LIST_TYPE = "watched";
-const WATCHED_LIST_NAME = "Watched";
-
 type MediaType = "movie" | "tv";
+
+// Popfeed keys "watched" state by which media-type-specific list an item lives
+// in — there is no status field. Movies land in watched_movies; a show logged
+// per-episode is "currently watching", a show logged whole is "watched".
+export type ListType =
+  | "watched_movies"
+  | "currently_watching_tv_shows"
+  | "watched_tv_shows";
+
+const LIST_NAMES: Record<ListType, string> = {
+  watched_movies: "Watched Movies",
+  currently_watching_tv_shows: "Currently Watching",
+  watched_tv_shows: "Watched Shows",
+};
+
+function targetListType(mediaType: MediaType, isPerEpisode: boolean): ListType {
+  if (mediaType === "movie") return "watched_movies";
+  return isPerEpisode ? "currently_watching_tv_shows" : "watched_tv_shows";
+}
 
 interface StrongRef {
   uri: string;
@@ -21,21 +43,20 @@ interface WatchedEpisode {
 }
 
 interface ListItemValue {
-  identifiers: Record<string, string | number>;
+  identifiers: Record<string, string>;
   creativeWorkType: string;
-  status?: string;
   listUri: string;
+  listType: string;
   title?: string;
   addedAt: string;
-  startedAt?: string;
-  completedAt?: string;
   watchedEpisodes?: WatchedEpisode[];
   [key: string]: unknown;
 }
 
+// key: `${did}:${listType}` -> list uri
 const listUriCache = new Map<string, string>();
 
-async function listAllRecords(
+export async function listAllRecords(
   agent: Agent,
   did: string,
   collection: string,
@@ -63,18 +84,19 @@ async function listAllRecords(
   return out;
 }
 
-async function ensureWatchedList(agent: Agent, did: string): Promise<string> {
-  const cached = listUriCache.get(did);
+export async function ensureList(
+  agent: Agent,
+  did: string,
+  listType: ListType,
+): Promise<string> {
+  const cacheKey = `${did}:${listType}`;
+  const cached = listUriCache.get(cacheKey);
   if (cached) return cached;
 
   const lists = await listAllRecords(agent, did, LIST_COLLECTION);
-  const existing = lists.find(
-    (r) =>
-      r.value.listType === WATCHED_LIST_TYPE ||
-      r.value.name === WATCHED_LIST_NAME,
-  );
+  const existing = lists.find((r) => r.value.listType === listType);
   if (existing) {
-    listUriCache.set(did, existing.uri);
+    listUriCache.set(cacheKey, existing.uri);
     return existing.uri;
   }
 
@@ -82,26 +104,32 @@ async function ensureWatchedList(agent: Agent, did: string): Promise<string> {
     repo: did,
     collection: LIST_COLLECTION,
     record: {
-      name: WATCHED_LIST_NAME,
-      listType: WATCHED_LIST_TYPE,
-      ordered: false,
+      $type: LIST_COLLECTION,
+      name: LIST_NAMES[listType],
+      listType,
+      authorDid: did,
+      description: "",
       createdAt: new Date().toISOString(),
     },
     validate: false,
   });
-  listUriCache.set(did, created.data.uri);
+  listUriCache.set(cacheKey, created.data.uri);
   return created.data.uri;
 }
 
 function matchesWork(
   value: Record<string, unknown>,
   creativeWorkType: string,
-  idField: string,
   idStr: string,
 ): boolean {
   if (value.creativeWorkType !== creativeWorkType) return false;
   const identifiers = value.identifiers as Record<string, unknown> | undefined;
-  return Boolean(identifiers && identifiers[idField] === idStr);
+  if (!identifiers) return false;
+  // Match on tmdbId; also honor the legacy tmdbTvSeriesId key so pre-migration
+  // TV items still resolve.
+  return (
+    identifiers.tmdbId === idStr || identifiers.tmdbTvSeriesId === idStr
+  );
 }
 
 function dedupeEpisodes(episodes: WatchedEpisode[]): WatchedEpisode[] {
@@ -114,6 +142,65 @@ function dedupeEpisodes(episodes: WatchedEpisode[]): WatchedEpisode[] {
     out.push(ep);
   }
   return out;
+}
+
+interface Blob {
+  $type: "blob";
+  ref: unknown;
+  mimeType: string;
+  size: number;
+}
+
+// The card on popfeed.social is drawn from these denormalized fields, so every
+// listItem write carries the full TMDB-derived display set plus an uploaded
+// poster blob. Uploading a blob costs a round-trip, so we reuse an existing
+// item's blob rather than re-uploading on every episode log.
+export interface DisplayFields {
+  title: string;
+  identifiers: Record<string, string>;
+  genres?: string[];
+  releaseDate?: string;
+  posterUrl?: string;
+  poster?: Blob;
+  backdropUrl?: string;
+  mainCredit?: string;
+  mainCreditRole?: string;
+}
+
+export async function buildDisplayFields(
+  agent: Agent,
+  did: string,
+  detail: WorkDetail,
+  title: string,
+  existingPoster?: Blob,
+  existingPosterUrl?: string,
+): Promise<DisplayFields> {
+  const identifiers: Record<string, string> = { tmdbId: String(detail.tmdbId) };
+  if (detail.imdbId) identifiers.imdbId = detail.imdbId;
+
+  const fields: DisplayFields = {
+    title: title || detail.title,
+    identifiers,
+    genres: detail.genres,
+  };
+  if (detail.releaseDate) fields.releaseDate = detail.releaseDate;
+  if (detail.backdropUrl) fields.backdropUrl = detail.backdropUrl;
+  if (detail.mainCredit) fields.mainCredit = detail.mainCredit;
+  if (detail.mainCreditRole) fields.mainCreditRole = detail.mainCreditRole;
+
+  if (existingPoster && existingPosterUrl) {
+    fields.poster = existingPoster;
+    fields.posterUrl = existingPosterUrl;
+  } else if (detail.posterPath) {
+    const bytes = await fetchPosterJpeg(detail.posterPath);
+    if (bytes) {
+      const uploaded = await agent.uploadBlob(bytes, { encoding: "image/jpeg" });
+      const blob = uploaded.data.blob;
+      fields.poster = blob as unknown as Blob;
+      fields.posterUrl = `https://cdn.bsky.app/img/feed_fullsize/plain/${did}/${blob.ref.toString()}@jpeg`;
+    }
+  }
+  return fields;
 }
 
 export interface UpsertWorkInput {
@@ -130,81 +217,73 @@ export async function upsertListItem(
   did: string,
   input: UpsertWorkInput,
 ): Promise<StrongRef> {
-  const listUri = await ensureWatchedList(agent, did);
   const idStr = String(input.tmdbId);
   const creativeWorkType = input.mediaType === "movie" ? "movie" : "tv_show";
-  const idField = input.mediaType === "movie" ? "tmdbId" : "tmdbTvSeriesId";
-
-  const isPartialTv =
+  const isPerEpisode =
     input.mediaType === "tv" &&
     (input.season !== undefined || input.episode !== undefined);
-  const status = isPartialTv ? "#in_progress" : "#finished";
+  const listType = targetListType(input.mediaType, isPerEpisode);
+  const listUri = await ensureList(agent, did, listType);
+
+  const detail = await getWorkDetail(input.mediaType, input.tmdbId);
 
   const items = await listAllRecords(agent, did, LIST_ITEM_COLLECTION);
   const existing = items.find((r) =>
-    matchesWork(r.value, creativeWorkType, idField, idStr),
+    matchesWork(r.value, creativeWorkType, idStr),
   );
 
   const now = new Date().toISOString();
+  const prev = existing?.value as ListItemValue | undefined;
 
-  if (existing) {
-    const prev = existing.value as ListItemValue;
-    const rkey = existing.uri.split("/").pop() as string;
+  const display = await buildDisplayFields(
+    agent,
+    did,
+    detail,
+    input.title,
+    prev?.poster as Blob | undefined,
+    typeof prev?.posterUrl === "string" ? prev.posterUrl : undefined,
+  );
 
-    const episodes = [...(prev.watchedEpisodes ?? [])];
-    if (
-      input.mediaType === "tv" &&
-      input.season !== undefined &&
-      input.episode !== undefined
-    ) {
-      episodes.push({
-        seasonNumber: input.season,
-        episodeNumber: input.episode,
-      });
-    }
-
-    const next: ListItemValue = {
-      ...prev,
-      identifiers: { ...prev.identifiers, [idField]: idStr },
-      creativeWorkType,
-      listUri: prev.listUri ?? listUri,
-      title: input.title || prev.title,
-      addedAt: prev.addedAt ?? now,
-      status,
-    };
-    if (episodes.length > 0) next.watchedEpisodes = dedupeEpisodes(episodes);
-    if (status === "#finished") next.completedAt = input.watchedAt;
-    else next.startedAt = prev.startedAt ?? input.watchedAt;
-
-    const put = await agent.com.atproto.repo.putRecord({
-      repo: did,
-      collection: LIST_ITEM_COLLECTION,
-      rkey,
-      record: next,
-      validate: false,
-    });
-    return { uri: put.data.uri, cid: put.data.cid };
-  }
-
-  const value: ListItemValue = {
-    identifiers: { [idField]: idStr },
-    creativeWorkType,
-    listUri,
-    title: input.title,
-    addedAt: now,
-    status,
-  };
+  const episodes = [...(prev?.watchedEpisodes ?? [])];
   if (
     input.mediaType === "tv" &&
     input.season !== undefined &&
     input.episode !== undefined
   ) {
-    value.watchedEpisodes = [
-      { seasonNumber: input.season, episodeNumber: input.episode },
-    ];
+    const epTmdbId = await getEpisodeTmdbId(
+      input.tmdbId,
+      input.season,
+      input.episode,
+    );
+    const entry: WatchedEpisode = {
+      seasonNumber: input.season,
+      episodeNumber: input.episode,
+    };
+    if (epTmdbId) entry.tmdbId = epTmdbId;
+    episodes.push(entry);
   }
-  if (status === "#finished") value.completedAt = input.watchedAt;
-  else value.startedAt = input.watchedAt;
+
+  const value: ListItemValue = {
+    $type: LIST_ITEM_COLLECTION,
+    ...display,
+    creativeWorkType,
+    listUri,
+    listType,
+    addedAt: prev?.addedAt ?? now,
+  };
+  if (episodes.length > 0) value.watchedEpisodes = dedupeEpisodes(episodes);
+
+  if (existing) {
+    const rkey = existing.uri.split("/").pop() as string;
+    const put = await agent.com.atproto.repo.putRecord({
+      repo: did,
+      collection: LIST_ITEM_COLLECTION,
+      rkey,
+      record: value,
+      validate: false,
+    });
+    return { uri: put.data.uri, cid: put.data.cid };
+  }
 
   const created = await agent.com.atproto.repo.createRecord({
     repo: did,
