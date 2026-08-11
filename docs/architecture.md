@@ -69,6 +69,7 @@ Invariants worth knowing without reading code:
 
 ## Deeper dives
 
+- [Lexicons — what we speak, and to whom](./lexicons.md)
 - [Record model & Popfeed interop](./records.md)
 - Appview (Jetstream → SQLite: tag pages, feeds, stats) — *not built yet; gets its own doc with its slice*
 - Deploy topology (nimbus, Cloudflare) — *not built yet; same*
