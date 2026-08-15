@@ -18,12 +18,16 @@ type MediaType = "movie" | "tv";
 export type ListType =
   | "watched_movies"
   | "currently_watching_tv_shows"
-  | "watched_tv_shows";
+  | "watched_tv_shows"
+  | "movie_watchlist"
+  | "tv_show_watchlist";
 
 const LIST_NAMES: Record<ListType, string> = {
   watched_movies: "Watched Movies",
   currently_watching_tv_shows: "Currently Watching",
   watched_tv_shows: "Watched Shows",
+  movie_watchlist: "Movie Watchlist",
+  tv_show_watchlist: "TV Watchlist",
 };
 
 function targetListType(mediaType: MediaType, isPerEpisode: boolean): ListType {
@@ -228,6 +232,10 @@ export async function upsertListItem(
   const detail = await getWorkDetail(input.mediaType, input.tmdbId);
 
   const items = await listAllRecords(agent, did, LIST_ITEM_COLLECTION);
+  // Match on tmdbId across ALL lists, not just the target one. A show sitting in
+  // the watchlist is found here and putRecord'd in place with the new listType +
+  // listUri, so its first logged episode migrates it out of the watchlist into
+  // currently-watching rather than creating a duplicate.
   const existing = items.find((r) =>
     matchesWork(r.value, creativeWorkType, idStr),
   );
@@ -383,6 +391,131 @@ export async function listCurrentlyWatching(
       watchedEpisodes,
     });
   }
+  return out;
+}
+
+// Where a show currently sits across the account's lists. Drives the show
+// page's watchlist button: "none" -> add, "watchlist" -> remove, and a show
+// already being watched/watched isn't a watchlist candidate.
+export type ShowListState = "none" | "watchlist" | "watching" | "watched";
+
+export interface ShowListStatus {
+  state: ShowListState;
+  listItemUri?: string;
+}
+
+export async function getShowListState(
+  agent: Agent,
+  did: string,
+  tmdbId: number,
+): Promise<ShowListStatus> {
+  const idStr = String(tmdbId);
+  const items = await listAllRecords(agent, did, LIST_ITEM_COLLECTION);
+  const existing = items.find((r) => matchesWork(r.value, "tv_show", idStr));
+  if (!existing) return { state: "none" };
+  const listType = existing.value.listType;
+  const state: ShowListState =
+    listType === "tv_show_watchlist"
+      ? "watchlist"
+      : listType === "watched_tv_shows"
+        ? "watched"
+        : "watching";
+  return { state, listItemUri: existing.uri };
+}
+
+// Adds a show to the TV watchlist. A no-op that returns the existing ref when the
+// show is already tracked on any list — a watched/watching show shouldn't be
+// pulled back onto the watchlist.
+export async function addToWatchlist(
+  agent: Agent,
+  did: string,
+  input: { tmdbId: number; title: string },
+): Promise<StrongRef> {
+  const idStr = String(input.tmdbId);
+  const items = await listAllRecords(agent, did, LIST_ITEM_COLLECTION);
+  const existing = items.find((r) => matchesWork(r.value, "tv_show", idStr));
+  if (existing) return { uri: existing.uri, cid: existing.cid };
+
+  const listUri = await ensureList(agent, did, "tv_show_watchlist");
+  const detail = await getWorkDetail("tv", input.tmdbId);
+  const display = await buildDisplayFields(agent, did, detail, input.title);
+
+  const value: ListItemValue = {
+    $type: LIST_ITEM_COLLECTION,
+    ...display,
+    creativeWorkType: "tv_show",
+    listUri,
+    listType: "tv_show_watchlist",
+    addedAt: new Date().toISOString(),
+  };
+  const created = await agent.com.atproto.repo.createRecord({
+    repo: did,
+    collection: LIST_ITEM_COLLECTION,
+    record: value,
+    validate: false,
+  });
+  return { uri: created.data.uri, cid: created.data.cid };
+}
+
+// Deletes the watchlist listItem for a show. Returns false when the show isn't
+// on the watchlist (leaving items in other lists untouched).
+export async function removeFromWatchlist(
+  agent: Agent,
+  did: string,
+  tmdbId: number,
+): Promise<boolean> {
+  const idStr = String(tmdbId);
+  const items = await listAllRecords(agent, did, LIST_ITEM_COLLECTION);
+  const existing = items.find(
+    (r) =>
+      matchesWork(r.value, "tv_show", idStr) &&
+      r.value.listType === "tv_show_watchlist",
+  );
+  if (!existing) return false;
+  const rkey = existing.uri.split("/").pop() as string;
+  await agent.com.atproto.repo.deleteRecord({
+    repo: did,
+    collection: LIST_ITEM_COLLECTION,
+    rkey,
+  });
+  return true;
+}
+
+export interface WatchlistShow {
+  tmdbId: number;
+  title: string;
+  posterUrl: string | null;
+  year: string | null;
+  addedAt: string;
+}
+
+export async function listWatchlist(
+  agent: Agent,
+  did: string,
+): Promise<WatchlistShow[]> {
+  const items = await listAllRecords(agent, did, LIST_ITEM_COLLECTION);
+  const out: WatchlistShow[] = [];
+  for (const { value } of items) {
+    if (value.listType !== "tv_show_watchlist") continue;
+
+    const identifiers = value.identifiers as
+      | Record<string, unknown>
+      | undefined;
+    const idStr = identifiers?.tmdbId ?? identifiers?.tmdbTvSeriesId;
+    const tmdbId = Number(idStr);
+    if (!Number.isInteger(tmdbId) || tmdbId <= 0) continue;
+
+    const releaseDate =
+      typeof value.releaseDate === "string" ? value.releaseDate : "";
+    out.push({
+      tmdbId,
+      title: typeof value.title === "string" ? value.title : `TV #${tmdbId}`,
+      posterUrl: typeof value.posterUrl === "string" ? value.posterUrl : null,
+      year: /^\d{4}/.test(releaseDate) ? releaseDate.slice(0, 4) : null,
+      addedAt: typeof value.addedAt === "string" ? value.addedAt : "",
+    });
+  }
+  out.sort((a, b) => (a.addedAt < b.addedAt ? 1 : -1));
   return out;
 }
 
