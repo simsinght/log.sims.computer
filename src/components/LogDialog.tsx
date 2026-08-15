@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 export interface LogTarget {
   tmdbId: number;
-  mediaType: "movie" | "tv";
+  mediaType: "tv";
   title: string;
   year: string | null;
 }
@@ -46,7 +46,6 @@ export default function LogDialog({
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const tags = useMemo(() => parseTags(tagsInput), [tagsInput]);
-  const isTv = target.mediaType === "tv";
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -71,8 +70,8 @@ export default function LogDialog({
           tags,
           note: note.trim() || undefined,
           rewatch,
-          season: isTv && season ? Number(season) : undefined,
-          episode: isTv && episode ? Number(episode) : undefined,
+          season: season ? Number(season) : undefined,
+          episode: episode ? Number(episode) : undefined,
         }),
       });
       if (!res.ok) {
@@ -101,7 +100,7 @@ export default function LogDialog({
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-wide text-gray-500">
-              Log {isTv ? "TV" : "movie"}
+              Log
             </p>
             <h2 className="mt-1 text-lg font-semibold leading-tight">
               {target.title}
@@ -146,36 +145,30 @@ export default function LogDialog({
               />
             </label>
 
-            {isTv && (
-              <div className="flex gap-3">
-                <label className="block flex-1">
-                  <span className="mb-1 block text-sm text-gray-400">
-                    Season
-                  </span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={season}
-                    onChange={(e) => setSeason(e.target.value)}
-                    placeholder="—"
-                    className="w-full rounded-lg border border-gray-800 bg-[#0a0a0a] px-3 py-2 text-sm outline-none focus:border-gray-600"
-                  />
-                </label>
-                <label className="block flex-1">
-                  <span className="mb-1 block text-sm text-gray-400">
-                    Episode
-                  </span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={episode}
-                    onChange={(e) => setEpisode(e.target.value)}
-                    placeholder="—"
-                    className="w-full rounded-lg border border-gray-800 bg-[#0a0a0a] px-3 py-2 text-sm outline-none focus:border-gray-600"
-                  />
-                </label>
-              </div>
-            )}
+            <div className="flex gap-3">
+              <label className="block flex-1">
+                <span className="mb-1 block text-sm text-gray-400">Season</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={season}
+                  onChange={(e) => setSeason(e.target.value)}
+                  placeholder="—"
+                  className="w-full rounded-lg border border-gray-800 bg-[#0a0a0a] px-3 py-2 text-sm outline-none focus:border-gray-600"
+                />
+              </label>
+              <label className="block flex-1">
+                <span className="mb-1 block text-sm text-gray-400">Episode</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={episode}
+                  onChange={(e) => setEpisode(e.target.value)}
+                  placeholder="—"
+                  className="w-full rounded-lg border border-gray-800 bg-[#0a0a0a] px-3 py-2 text-sm outline-none focus:border-gray-600"
+                />
+              </label>
+            </div>
 
             <label className="block">
               <span className="mb-1 block text-sm text-gray-400">Tags</span>

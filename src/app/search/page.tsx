@@ -5,12 +5,9 @@ import Image from "next/image";
 import Link from "next/link";
 import LogDialog, { LogTarget } from "@/components/LogDialog";
 
-type MediaType = "movie" | "tv";
-type SearchType = MediaType | "all";
-
 interface SearchResult {
   tmdbId: number;
-  mediaType: MediaType;
+  mediaType: "tv";
   title: string;
   year: string | null;
   posterPath: string | null;
@@ -18,12 +15,6 @@ interface SearchResult {
 }
 
 const POSTER_BASE = "https://image.tmdb.org/t/p/w342";
-
-const TYPE_OPTIONS: { value: SearchType; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "movie", label: "Movies" },
-  { value: "tv", label: "TV" },
-];
 
 function useDebounced<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -36,11 +27,9 @@ function useDebounced<T>(value: T, delay: number): T {
 
 function PosterCard({
   result,
-  signedIn,
   onLog,
 }: {
   result: SearchResult;
-  signedIn: boolean;
   onLog: (target: LogTarget) => void;
 }) {
   return (
@@ -59,24 +48,19 @@ function PosterCard({
             No poster
           </div>
         )}
-        <span className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-200">
-          {result.mediaType === "tv" ? "TV" : "Movie"}
-        </span>
-        {signedIn && (
-          <button
-            onClick={() =>
-              onLog({
-                tmdbId: result.tmdbId,
-                mediaType: result.mediaType,
-                title: result.title,
-                year: result.year,
-              })
-            }
-            className="absolute inset-x-1 bottom-1 rounded bg-white/90 py-1.5 text-xs font-semibold text-black opacity-0 transition-opacity hover:bg-white group-hover:opacity-100 focus:opacity-100"
-          >
-            Log
-          </button>
-        )}
+        <button
+          onClick={() =>
+            onLog({
+              tmdbId: result.tmdbId,
+              mediaType: result.mediaType,
+              title: result.title,
+              year: result.year,
+            })
+          }
+          className="absolute inset-x-1 bottom-1 rounded bg-white/90 py-2 text-xs font-semibold text-black opacity-0 transition-opacity hover:bg-white group-hover:opacity-100 focus:opacity-100"
+        >
+          Log
+        </button>
       </div>
       <div className="mt-2">
         <p className="truncate text-sm font-medium" title={result.title}>
@@ -88,14 +72,28 @@ function PosterCard({
   );
 }
 
+function SignInPrompt() {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[#0a0a0a] px-6 text-center text-[#ededed]">
+      <h1 className="text-2xl font-semibold tracking-tight">Sign in to search</h1>
+      <p className="mt-2 text-gray-400">Search is available once you sign in.</p>
+      <Link
+        href="/login"
+        className="mt-8 rounded-full bg-white px-8 py-3 text-base font-semibold text-black transition-colors hover:bg-gray-200"
+      >
+        Sign in
+      </Link>
+    </div>
+  );
+}
+
 export default function SearchPage() {
   const [query, setQuery] = useState("");
-  const [type, setType] = useState<SearchType>("all");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
-  const [signedIn, setSignedIn] = useState(false);
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const [logTarget, setLogTarget] = useState<LogTarget | null>(null);
 
   const debouncedQuery = useDebounced(query.trim(), 300);
@@ -108,7 +106,7 @@ export default function SearchPage() {
   }, []);
 
   useEffect(() => {
-    if (!debouncedQuery) {
+    if (!signedIn || !debouncedQuery) {
       setResults([]);
       setHasSearched(false);
       setError(null);
@@ -119,7 +117,7 @@ export default function SearchPage() {
     setLoading(true);
     setError(null);
 
-    const params = new URLSearchParams({ q: debouncedQuery, type });
+    const params = new URLSearchParams({ q: debouncedQuery });
     fetch(`/api/tmdb/search?${params.toString()}`, {
       signal: controller.signal,
     })
@@ -143,7 +141,15 @@ export default function SearchPage() {
       .finally(() => setLoading(false));
 
     return () => controller.abort();
-  }, [debouncedQuery, type]);
+  }, [debouncedQuery, signedIn]);
+
+  if (signedIn === null) {
+    return <div className="min-h-screen bg-[#0a0a0a]" />;
+  }
+
+  if (!signedIn) {
+    return <SignInPrompt />;
+  }
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ededed]">
@@ -153,39 +159,21 @@ export default function SearchPage() {
             href="/"
             className="text-sm text-gray-500 transition-colors hover:text-gray-300"
           >
-            &larr; log.sims.computer
+            &larr; tvlog
           </Link>
           <h1 className="mt-4 text-3xl font-bold tracking-tight">Search</h1>
-          <p className="mt-1 text-gray-400">
-            Find a movie or TV show to log.
-          </p>
+          <p className="mt-1 text-gray-400">Find a show to log.</p>
         </div>
 
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="mb-8">
           <input
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search movies & TV…"
+            placeholder="Search TV shows…"
             autoFocus
             className="w-full rounded-lg border border-gray-800 bg-[#141414] px-4 py-3 text-base placeholder-gray-600 outline-none transition-colors focus:border-gray-600"
           />
-          <div className="flex shrink-0 rounded-lg border border-gray-800 p-1">
-            {TYPE_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                onClick={() => setType(option.value)}
-                className={
-                  "rounded-md px-3 py-1.5 text-sm transition-colors " +
-                  (type === option.value
-                    ? "bg-gray-700 text-white"
-                    : "text-gray-400 hover:text-gray-200")
-                }
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
         </div>
 
         {error && (
@@ -194,13 +182,11 @@ export default function SearchPage() {
           </div>
         )}
 
-        {loading && (
-          <p className="text-sm text-gray-500">Searching…</p>
-        )}
+        {loading && <p className="text-sm text-gray-500">Searching…</p>}
 
         {!loading && !error && !hasSearched && (
           <div className="rounded-lg border-2 border-dashed border-gray-800 p-12 text-center text-gray-500">
-            Start typing to search TMDB for movies and TV shows.
+            Start typing to search TMDB for TV shows.
           </div>
         )}
 
@@ -216,7 +202,6 @@ export default function SearchPage() {
               <PosterCard
                 key={`${result.mediaType}-${result.tmdbId}`}
                 result={result}
-                signedIn={signedIn}
                 onLog={setLogTarget}
               />
             ))}

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { DiaryDay, DiaryEntry } from "@/lib/diary";
 
 function formatDay(date: string): string {
@@ -52,32 +51,17 @@ function EntryRow({ entry }: { entry: DiaryEntry }) {
   );
 }
 
-export default function Diary({
-  handle,
-  days,
-}: {
-  handle: string;
-  days: DiaryDay[];
-}) {
+export default function Diary({ days }: { days: DiaryDay[] }) {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ededed]">
       <div className="container mx-auto max-w-3xl px-4 py-12">
-        <div className="mb-10 flex items-end justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Diary</h1>
-            <p className="mt-1 text-gray-400">@{handle}</p>
-          </div>
-          <Link
-            href="/search"
-            className="rounded-lg border border-gray-700 px-4 py-2 text-sm font-medium text-gray-200 transition-colors hover:border-gray-500 hover:text-white"
-          >
-            Log a watch
-          </Link>
+        <div className="mb-10">
+          <h1 className="text-3xl font-bold tracking-tight">Diary</h1>
         </div>
 
         {days.length === 0 ? (
           <div className="rounded-lg border-2 border-dashed border-gray-800 p-12 text-center text-gray-500">
-            Nothing logged yet. Search for a movie or show to start your diary.
+            Nothing logged yet. Search for a show to start your diary.
           </div>
         ) : (
           <div className="space-y-8">

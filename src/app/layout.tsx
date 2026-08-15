@@ -1,10 +1,16 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import AuthStatus from "@/components/AuthStatus";
+import AppChrome from "@/components/AppChrome";
 
 export const metadata: Metadata = {
-  title: "log.sims.computer",
-  description: "Personal movie & TV log on atproto",
+  title: "tvlog",
+  description: "a personal TV log",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -15,9 +21,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <div className="fixed right-4 top-4 z-50">
-          <AuthStatus />
-        </div>
+        <AppChrome />
         {children}
       </body>
     </html>

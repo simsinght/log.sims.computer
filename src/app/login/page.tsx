@@ -40,7 +40,7 @@ export default function LoginPage() {
             href="/"
             className="text-sm text-gray-500 transition-colors hover:text-gray-300"
           >
-            &larr; log.sims.computer
+            &larr; tvlog
           </Link>
           <h1 className="mt-4 text-3xl font-bold tracking-tight">Sign in</h1>
           <p className="mt-1 text-gray-400">
