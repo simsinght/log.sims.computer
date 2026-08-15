@@ -103,7 +103,7 @@ function AccountSection({ handle, did }: { handle: string; did: string }) {
   );
 }
 
-function ImportSection() {
+function ImportSection({ sampleEnabled }: { sampleEnabled: boolean }) {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -152,14 +152,11 @@ function ImportSection() {
     return stopPolling;
   }, [startPolling, stopPolling]);
 
-  async function onImport() {
-    if (!file) return;
+  async function submit(init: RequestInit) {
     setError(null);
     setUploading(true);
     try {
-      const body = new FormData();
-      body.append("file", file);
-      const res = await fetch("/api/import", { method: "POST", body });
+      const res = await fetch("/api/import", { method: "POST", ...init });
       const data = (await res.json()) as {
         error?: string;
         started?: boolean;
@@ -179,6 +176,20 @@ function ImportSection() {
     } finally {
       setUploading(false);
     }
+  }
+
+  function onImport() {
+    if (!file) return;
+    const body = new FormData();
+    body.append("file", file);
+    void submit({ body });
+  }
+
+  function onLoadSample() {
+    void submit({
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sample: true }),
+    });
   }
 
   const running = status?.phase === "importing" || status?.phase === "parsing";
@@ -220,13 +231,28 @@ function ImportSection() {
         )}
       </div>
 
-      <button
-        onClick={onImport}
-        disabled={!file || uploading || running}
-        className="mt-4 rounded-full bg-white px-5 py-2 text-sm font-semibold text-black transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {uploading ? "Reading export…" : running ? "Importing…" : "Import history"}
-      </button>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button
+          onClick={onImport}
+          disabled={!file || uploading || running}
+          className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-black transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {uploading
+            ? "Reading export…"
+            : running
+              ? "Importing…"
+              : "Import history"}
+        </button>
+        {sampleEnabled && (
+          <button
+            onClick={onLoadSample}
+            disabled={uploading || running}
+            className="rounded-full border border-gray-700 px-5 py-2 text-sm font-medium text-gray-300 transition-colors hover:border-gray-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Load sample export
+          </button>
+        )}
+      </div>
 
       {error && (
         <p className="mt-4 rounded-md border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-300">
@@ -304,14 +330,16 @@ function ImportSection() {
 export default function SettingsClient({
   handle,
   did,
+  sampleImportEnabled,
 }: {
   handle: string;
   did: string;
+  sampleImportEnabled: boolean;
 }) {
   return (
     <div className="mt-8 space-y-6">
       <AccountSection handle={handle} did={did} />
-      <ImportSection />
+      <ImportSection sampleEnabled={sampleImportEnabled} />
     </div>
   );
 }

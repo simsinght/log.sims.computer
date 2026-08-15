@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { getAuthedAgent } from "@/lib/atproto/agent";
 import { getSession } from "@/lib/session";
 import SettingsClient from "@/components/SettingsClient";
 
@@ -26,13 +25,20 @@ function SignInPrompt() {
 
 export default async function SettingsPage() {
   const session = await getSession();
+  // Render account info straight from the session cookie — no PDS round-trip.
+  // getAuthedAgent() resumes the atproto session over the network, which can
+  // reject on a cold first hit and would throw during this server render; the
+  // handle and DID we need are already in the cookie, so we don't touch it here.
   if (!session.did) return <SignInPrompt />;
 
-  const agent = await getAuthedAgent();
-  if (!agent || !agent.did) return <SignInPrompt />;
-
-  const handle = session.handle ?? agent.did;
-  const did = agent.did;
+  const did = session.did;
+  const handle = session.handle ?? did;
+  // Preview-only affordance: same env gate as /api/auth/test-login. The verify
+  // collector can't fill file inputs, so when test credentials are configured
+  // the Import section offers a "Load sample export" button instead.
+  const sampleImportEnabled = Boolean(
+    process.env.ATP_TEST_HANDLE && process.env.ATP_TEST_APP_PASSWORD,
+  );
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ededed]">
@@ -46,7 +52,11 @@ export default async function SettingsPage() {
           </Link>
           <h1 className="mt-4 text-3xl font-bold tracking-tight">Settings</h1>
         </div>
-        <SettingsClient handle={handle} did={did} />
+        <SettingsClient
+          handle={handle}
+          did={did}
+          sampleImportEnabled={sampleImportEnabled}
+        />
       </div>
     </div>
   );
