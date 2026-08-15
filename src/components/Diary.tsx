@@ -66,6 +66,25 @@ function EntryRow({ entry }: { entry: DiaryEntry }) {
   );
 }
 
+export function DiaryDays({ days }: { days: DiaryDay[] }) {
+  return (
+    <div className="space-y-8">
+      {days.map((day) => (
+        <section key={day.date}>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
+            {formatDay(day.date)}
+          </h2>
+          <div className="space-y-1">
+            {day.entries.map((entry) => (
+              <EntryRow key={entry.uri} entry={entry} />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 export default function Diary({ days }: { days: DiaryDay[] }) {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ededed]">
@@ -79,20 +98,7 @@ export default function Diary({ days }: { days: DiaryDay[] }) {
             Nothing logged yet. Search for a show to start your diary.
           </div>
         ) : (
-          <div className="space-y-8">
-            {days.map((day) => (
-              <section key={day.date}>
-                <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                  {formatDay(day.date)}
-                </h2>
-                <div className="space-y-1">
-                  {day.entries.map((entry) => (
-                    <EntryRow key={entry.uri} entry={entry} />
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
+          <DiaryDays days={days} />
         )}
       </div>
     </div>

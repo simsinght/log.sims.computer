@@ -35,9 +35,11 @@ type When = "now" | "other";
 export default function LogDialog({
   target,
   onClose,
+  onLogged,
 }: {
   target: LogTarget;
   onClose: () => void;
+  onLogged?: () => void;
 }) {
   const [when, setWhen] = useState<When>("now");
   const [pickedDate, setPickedDate] = useState<Date>(() => todayNoon());
@@ -85,6 +87,7 @@ export default function LogDialog({
         throw new Error(body.error ?? "Failed to log");
       }
       setDone(true);
+      onLogged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to log");
     } finally {

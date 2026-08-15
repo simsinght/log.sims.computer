@@ -2,7 +2,7 @@
 
 ## What this app is
 
-**tvlog** — a personal TV log on atproto (AT Protocol). TV-only: you search and log TV shows; there is no movie search or movie logging in the UI. Logging-first: diary entries with free-form tags matter more than ratings. Users authenticate with their atproto identity; records are written to their own PDS. (The domain is still log.sims.computer, but the app calls itself "tvlog" everywhere user-visible.)
+**tvlog** — a personal TV log on atproto (AT Protocol). TV-only: you search and log TV shows; there is no movie search or movie logging in the UI. Logging-first: the signed-in home leads with the shows you're currently watching, each with its next unwatched episode ready to log in one tap; free-form tags matter more than ratings. Users authenticate with their atproto identity; records are written to their own PDS. (The domain is still log.sims.computer, but the app calls itself "tvlog" everywhere user-visible.)
 
 ## Authenticating (do this first for any logged-in surface)
 
@@ -15,7 +15,12 @@ Navigate to `/api/auth/test-login`. If test credentials are configured in this e
 
 ## Surfaces
 
-- `/` — **logged out**: the landing page — the "tvlog" wordmark, the tagline "a personal TV log", and a prominent "Sign in" button linking to `/login`. There is **no search access when logged out** (search uses a personal TMDB key). **Signed in**: the **diary** — watch entries grouped by day, newest first, each with title, optional season/episode, tag chips, optional note, and a rewatch marker. A TV entry's **title links to its show page** (`/show/<tmdbId>`); older imported movie entries render as plain text with no link (and should render fine — they just can't be created from the UI).
+- `/` — **logged out**: the landing page — the "tvlog" wordmark, the tagline "a personal TV log", and a prominent "Sign in" button linking to `/login`. There is **no search access when logged out** (search uses a personal TMDB key). **Signed in**: a **watching-first home**, not the full diary.
+  - It leads with a **"Watching"** section (an `h1` reading "Watching") — a grid of cards for the shows currently in progress (those in the account's "currently watching" list), most recent activity first, capped at a sensible number (~12). Each card shows a **poster** (loaded same-origin through `/_next/image?...`), the **show title** (a link to `/show/<tmdbId>`), and one of two states:
+    - **Next episode available**: a label formatted **"Next · S<n>E<m>"** and a prominent **"Just Finished"** button. Tapping it opens the **log sheet preloaded with that exact next episode** (the same no-picker sheet described below, with "Just Finished" preselected) — one tap on the sheet's "Log watch" submits. After a successful log, the home re-renders and **that card advances to the following episode** (or flips to the caught-up state if it was the finale).
+    - **Caught up**: when every aired episode is already watched, the card shows a plain **"All caught up"** line and **no Log button** (correct, not a failure).
+  - Below Watching is a compact **"Recent"** section (an `h2` reading "Recent") — the diary grouped by day, newest first, each entry with title, optional season/episode, tag chips, optional note, and a rewatch marker. A TV entry's **title links to its show page** (`/show/<tmdbId>`); older imported movie entries render as plain text with no link. The Recent section is omitted entirely when there is no watch history.
+  - **Empty state**: an account with no shows in progress sees a friendly "Nothing in progress yet" panel with a **"Search shows"** link (pointing at `/search`) in place of the card grid — no error, no blank section. (The test account has many in-progress shows, so you will normally see cards, not this state.)
 - **Header (signed in)** — top-right is a single round **profile icon** (aria-label "Account menu"). Clicking it opens a small popover menu containing a **"Log out"** button. There is no visible handle/username and no "Log a watch" button anywhere.
 - **Search FAB (signed in)** — a round floating action button fixed at the **bottom-right** (aria-label "Search") with a magnifying-glass icon. It is the only entry point to search; tapping it navigates to `/search`.
 - `/search` — **signed in only**. If visited while logged out, it shows a "Sign in to search" prompt with a Sign in link rather than a search box. When signed in: a TMDB-backed **TV-only** search. The input is debounced (~300ms): after typing, wait for the grid to update before judging results. Posters must load through `/_next/image?...` on this origin — a visible poster implies the same-origin rule held. Nonsense queries show a no-results state, not an error. There is **no movie/TV filter toggle** (results are always TV shows). Result cards have **no "Log" button**: the whole card is a link — tapping a result navigates to that show's page at `/show/<tmdbId>`.
@@ -28,7 +33,7 @@ Navigate to `/api/auth/test-login`. If test credentials are configured in this e
 
 ## App-specific gotchas
 
-- All API traffic is same-origin by design (TMDB is proxied server-side; the API key must never appear in the browser). If the browser calls api.themoviedb.org or image.tmdb.org directly, that is itself a failure worth reporting.
+- All API traffic is same-origin by design (TMDB is proxied server-side; the API key must never appear in the browser). If the browser calls api.themoviedb.org or image.tmdb.org directly, that is itself a failure worth reporting. Posters are still optimized through `/_next/image?...` on this origin, but their upstream source varies: search and show-page posters come from image.tmdb.org, while Watching-card posters come from a stored blob on cdn.bsky.app — both are proxied, so the `/_next/image` request is same-origin either way.
 - The favicon is `/icon.svg` (linked in head); a 404 for `/favicon.ico` in the console would be a regression.
 - Target device is a phone: surfaces are verified at a phone viewport. Touch targets (profile icon, FAB, buttons) should be comfortably tappable.
 

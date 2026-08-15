@@ -333,6 +333,59 @@ export async function createWatch(
   return { uri: created.data.uri, cid: created.data.cid };
 }
 
+export interface CurrentlyWatchingItem {
+  tmdbId: number;
+  title: string;
+  posterUrl: string | null;
+  year: string | null;
+  addedAt: string;
+  watchedEpisodes: { seasonNumber: number; episodeNumber: number }[];
+}
+
+export async function listCurrentlyWatching(
+  agent: Agent,
+  did: string,
+): Promise<CurrentlyWatchingItem[]> {
+  const items = await listAllRecords(agent, did, LIST_ITEM_COLLECTION);
+  const out: CurrentlyWatchingItem[] = [];
+  for (const { value } of items) {
+    if (value.listType !== "currently_watching_tv_shows") continue;
+
+    const identifiers = value.identifiers as
+      | Record<string, unknown>
+      | undefined;
+    const idStr = identifiers?.tmdbId ?? identifiers?.tmdbTvSeriesId;
+    const tmdbId = Number(idStr);
+    if (!Number.isInteger(tmdbId) || tmdbId <= 0) continue;
+
+    const rawEps = Array.isArray(value.watchedEpisodes)
+      ? (value.watchedEpisodes as WatchedEpisode[])
+      : [];
+    const watchedEpisodes = rawEps
+      .filter(
+        (e) =>
+          typeof e?.seasonNumber === "number" &&
+          typeof e?.episodeNumber === "number",
+      )
+      .map((e) => ({
+        seasonNumber: e.seasonNumber,
+        episodeNumber: e.episodeNumber,
+      }));
+
+    const releaseDate =
+      typeof value.releaseDate === "string" ? value.releaseDate : "";
+    out.push({
+      tmdbId,
+      title: typeof value.title === "string" ? value.title : `TV #${tmdbId}`,
+      posterUrl: typeof value.posterUrl === "string" ? value.posterUrl : null,
+      year: /^\d{4}/.test(releaseDate) ? releaseDate.slice(0, 4) : null,
+      addedAt: typeof value.addedAt === "string" ? value.addedAt : "",
+      watchedEpisodes,
+    });
+  }
+  return out;
+}
+
 export interface WatchRecord {
   uri: string;
   tmdbId: string;
