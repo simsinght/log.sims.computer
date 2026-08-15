@@ -44,12 +44,16 @@ type MediaType = "movie" | "tv";
 type ListType =
   | "watched_movies"
   | "currently_watching_tv_shows"
-  | "watched_tv_shows";
+  | "watched_tv_shows"
+  | "movie_watchlist"
+  | "tv_show_watchlist";
 
 const LIST_NAMES: Record<ListType, string> = {
   watched_movies: "Watched Movies",
   currently_watching_tv_shows: "Currently Watching",
   watched_tv_shows: "Watched Shows",
+  movie_watchlist: "Movie Watchlist",
+  tv_show_watchlist: "TV Watchlist",
 };
 
 // ---------------------------------------------------------------------------
@@ -372,6 +376,72 @@ function groupWorks(events: PlayEvent[]): WorkGroup[] {
 }
 
 // ---------------------------------------------------------------------------
+// Watchlist (lists-watchlist.json): mixed movies/shows the user means to watch
+// ---------------------------------------------------------------------------
+
+interface TraktListEntry {
+  type: "movie" | "show";
+  movie?: { ids: TraktIds; title?: string };
+  show?: { ids: TraktIds; title?: string };
+  listed_at?: string;
+}
+
+interface WatchlistEntry {
+  mediaType: MediaType;
+  tmdbId: number;
+  imdbId?: string;
+  title: string;
+  listedAt: string;
+}
+
+function normalizeWatchlistEntry(e: TraktListEntry): WatchlistEntry | null {
+  const node = e.type === "movie" ? e.movie : e.show;
+  const tmdb = node?.ids.tmdb;
+  if (!tmdb) return null;
+  return {
+    mediaType: e.type === "movie" ? "movie" : "tv",
+    tmdbId: tmdb,
+    imdbId: node?.ids.imdb,
+    title: node?.title ?? "",
+    listedAt: e.listed_at ?? new Date().toISOString(),
+  };
+}
+
+function parseWatchlist(source: Source, entries: string[]): WatchlistEntry[] {
+  const file = entries.find((e) => /(^|\/)lists-watchlist\.json$/.test(e));
+  if (!file) return [];
+  let raw: TraktListEntry[];
+  try {
+    raw = readJson<TraktListEntry[]>(source, file);
+  } catch {
+    return [];
+  }
+  const out: WatchlistEntry[] = [];
+  const seen = new Set<string>();
+  for (const e of raw) {
+    const n = normalizeWatchlistEntry(e);
+    if (!n) continue;
+    const key = `${n.mediaType}:${n.tmdbId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(n);
+  }
+  return out;
+}
+
+// A watchlist entry reuses the listItem builder via a WorkGroup with no episodes.
+function watchlistGroup(entry: WatchlistEntry): WorkGroup {
+  return {
+    key: `${entry.mediaType}:${entry.tmdbId}`,
+    mediaType: entry.mediaType,
+    tmdbId: entry.tmdbId,
+    imdbId: entry.imdbId,
+    title: entry.title,
+    episodes: new Map(),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // atproto helpers
 // ---------------------------------------------------------------------------
 
@@ -544,6 +614,9 @@ interface Plan {
   watchesToWrite: number;
   watchesSkipped: number;
   tmdbCallsNeeded: number;
+  watchlistParsed: number;
+  watchlistToCreate: WatchlistEntry[];
+  watchlistSkipped: number;
 }
 
 async function run(): Promise<void> {
@@ -606,6 +679,18 @@ async function run(): Promise<void> {
   console.log(
     `Parsed ${events.length} events (${skippedNoTmdb} skipped, no tmdb id); ${works.length} distinct works.`,
   );
+
+  let watchlistEntries = parseWatchlist(source, entries);
+  console.log(`Parsed ${watchlistEntries.length} watchlist items.`);
+  // Apply --limit up front (deterministic first-N) so a re-run considers the
+  // same items and skips them — slicing after the tracked-filter would instead
+  // pull in the next unimported batch each run.
+  if (args.limit !== undefined && Number.isFinite(args.limit)) {
+    watchlistEntries = watchlistEntries.slice(0, args.limit);
+    console.log(
+      `--limit ${args.limit}: ${watchlistEntries.length} watchlist items`,
+    );
+  }
 
   // --- report other export sections (out of scope, counts only) ---
   reportSideChannels(source, entries);
@@ -680,6 +765,16 @@ async function run(): Promise<void> {
   }
   const watchesSkipped = events.length - watchesToWrite;
 
+  // Watchlist: add only works not already tracked in ANY existing list, and not
+  // among the history works this run imports (a watched show shouldn't re-enter
+  // the watchlist). --limit caps the writes for small test runs.
+  const trackedKeys = new Set<string>(itemByTmdb.keys());
+  for (const w of works) trackedKeys.add(`${w.mediaType}:${w.tmdbId}`);
+  const watchlistToCreate = watchlistEntries.filter(
+    (e) => !trackedKeys.has(`${e.mediaType}:${e.tmdbId}`),
+  );
+  const watchlistSkipped = watchlistEntries.length - watchlistToCreate.length;
+
   const plan: Plan = {
     events,
     works,
@@ -688,6 +783,9 @@ async function run(): Promise<void> {
     watchesToWrite,
     watchesSkipped,
     tmdbCallsNeeded: agent ? tmdbCalls : tmdbNeeded,
+    watchlistParsed: watchlistEntries.length,
+    watchlistToCreate,
+    watchlistSkipped,
   };
   printPlan(plan);
 
@@ -822,10 +920,54 @@ async function run(): Promise<void> {
     }
   }
 
+  // --- phase 3: watchlist listItems (create-only; idempotent via skip) ---
+  let wlWritten = 0;
+  if (watchlistToCreate.length > 0) {
+    console.log("\nPhase 3: writing watchlist listItems...");
+    console.log(
+      `  fetching TMDB details for ${watchlistToCreate.length} watchlist works...`,
+    );
+    await prefetchDetails(watchlistToCreate.map(watchlistGroup));
+    for (const entry of watchlistToCreate) {
+      const g = watchlistGroup(entry);
+      const detail = detailCache.get(`${g.mediaType}:${g.tmdbId}`) ?? null;
+      const listType: ListType =
+        entry.mediaType === "movie" ? "movie_watchlist" : "tv_show_watchlist";
+      const listUri = await ensureList(agent, did, listType, existingLists);
+      try {
+        const value = buildListItemValue(
+          g,
+          detail,
+          listUri,
+          listType,
+          entry.listedAt,
+          [],
+        );
+        await withRateLimit(() =>
+          agent!.com.atproto.repo.createRecord({
+            repo: did,
+            collection: LIST_ITEM_COLLECTION,
+            record: value,
+            validate: false,
+          }),
+        );
+        wlWritten++;
+      } catch (err) {
+        failures++;
+        console.warn(
+          `  ! watchlist item failed for ${g.key}: ${(err as Error).message}`,
+        );
+      }
+      if (wlWritten % 50 === 0 || wlWritten === watchlistToCreate.length)
+        console.log(`  watchlist: ${wlWritten}/${watchlistToCreate.length}`);
+    }
+  }
+
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
   console.log(`\nDone in ${elapsed}s.`);
   console.log(`  listItems processed: ${works.length}`);
   console.log(`  watch records written: ${written}`);
+  console.log(`  watchlist items written: ${wlWritten}`);
   console.log(`  watch records skipped (already present): ${watchesSkipped}`);
   if (missingSubject > 0)
     console.log(`  watch records skipped (listItem failed): ${missingSubject}`);
@@ -912,14 +1054,13 @@ function reportSideChannels(source: Source, entries: string[]): void {
     countJson(source, entries, /ratings-shows.*\.json$/) +
     countJson(source, entries, /ratings-seasons.*\.json$/) +
     countJson(source, entries, /ratings-episodes.*\.json$/);
-  const watchlist = countJson(source, entries, /lists-watchlist\.json$/);
   const favorites = countJson(source, entries, /lists-favorites\.json$/);
   const customLists = entries.filter((e) =>
     /lists-list-.*\.json$/.test(e),
   ).length;
   console.log(
     `\nOther sections (import deferred, out of scope for this slice):\n` +
-      `  ratings: ${ratings}   watchlist: ${watchlist}   favorites: ${favorites}   custom lists: ${customLists}`,
+      `  ratings: ${ratings}   favorites: ${favorites}   custom lists: ${customLists}`,
   );
 }
 
@@ -945,6 +1086,15 @@ function printPlan(plan: Plan): void {
   console.log(`  listItems to update:           ${plan.listItemsToUpdate}`);
   console.log(`  watch records to write:        ${plan.watchesToWrite}`);
   console.log(`  watch records already present: ${plan.watchesSkipped}`);
+  const wlMovies = plan.watchlistToCreate.filter(
+    (e) => e.mediaType === "movie",
+  ).length;
+  const wlShows = plan.watchlistToCreate.length - wlMovies;
+  console.log(`  watchlist items parsed:        ${plan.watchlistParsed}`);
+  console.log(
+    `  watchlist items to add:        ${plan.watchlistToCreate.length} (${wlMovies} movies, ${wlShows} shows)`,
+  );
+  console.log(`  watchlist already tracked:     ${plan.watchlistSkipped}`);
   console.log(`  TMDB detail calls:             ${plan.tmdbCallsNeeded}`);
 }
 
