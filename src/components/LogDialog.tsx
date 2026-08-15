@@ -7,6 +7,9 @@ export interface LogTarget {
   mediaType: "tv";
   title: string;
   year: string | null;
+  season: number;
+  episode: number;
+  episodeName?: string;
 }
 
 function todayLocal(): string {
@@ -38,8 +41,6 @@ export default function LogDialog({
   const [tagsInput, setTagsInput] = useState("");
   const [note, setNote] = useState("");
   const [rewatch, setRewatch] = useState(false);
-  const [season, setSeason] = useState("");
-  const [episode, setEpisode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -70,8 +71,8 @@ export default function LogDialog({
           tags,
           note: note.trim() || undefined,
           rewatch,
-          season: season ? Number(season) : undefined,
-          episode: episode ? Number(episode) : undefined,
+          season: target.season,
+          episode: target.episode,
         }),
       });
       if (!res.ok) {
@@ -110,6 +111,10 @@ export default function LogDialog({
                 </span>
               )}
             </h2>
+            <p className="mt-1 text-sm text-gray-400">
+              S{target.season}E{target.episode}
+              {target.episodeName ? ` · ${target.episodeName}` : ""}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -144,31 +149,6 @@ export default function LogDialog({
                 className="w-full rounded-lg border border-gray-800 bg-[#0a0a0a] px-3 py-2 text-sm outline-none focus:border-gray-600"
               />
             </label>
-
-            <div className="flex gap-3">
-              <label className="block flex-1">
-                <span className="mb-1 block text-sm text-gray-400">Season</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={season}
-                  onChange={(e) => setSeason(e.target.value)}
-                  placeholder="—"
-                  className="w-full rounded-lg border border-gray-800 bg-[#0a0a0a] px-3 py-2 text-sm outline-none focus:border-gray-600"
-                />
-              </label>
-              <label className="block flex-1">
-                <span className="mb-1 block text-sm text-gray-400">Episode</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={episode}
-                  onChange={(e) => setEpisode(e.target.value)}
-                  placeholder="—"
-                  className="w-full rounded-lg border border-gray-800 bg-[#0a0a0a] px-3 py-2 text-sm outline-none focus:border-gray-600"
-                />
-              </label>
-            </div>
 
             <label className="block">
               <span className="mb-1 block text-sm text-gray-400">Tags</span>
