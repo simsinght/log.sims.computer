@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getAuthedAgent } from "@/lib/atproto/agent";
 import { getSession } from "@/lib/session";
 import { buildDiary, type DiaryDay } from "@/lib/diary";
-import { getWatching, type WatchingShow } from "@/lib/watching";
+import { getWatching, type WatchingResult } from "@/lib/watching";
 import Watching from "@/components/Watching";
 
 export const dynamic = "force-dynamic";
@@ -33,10 +33,18 @@ export default async function Home() {
     getWatching(agent, agent.did),
     buildDiary(agent, agent.did, 20),
   ]);
-  const shows: WatchingShow[] =
-    watchingResult.status === "fulfilled" ? watchingResult.value : [];
+  const watching: WatchingResult =
+    watchingResult.status === "fulfilled"
+      ? watchingResult.value
+      : { shows: [], inProgressCount: 0 };
   const days: DiaryDay[] =
     diaryResult.status === "fulfilled" ? diaryResult.value : [];
 
-  return <Watching shows={shows} days={days} />;
+  return (
+    <Watching
+      shows={watching.shows}
+      inProgressCount={watching.inProgressCount}
+      days={days}
+    />
+  );
 }

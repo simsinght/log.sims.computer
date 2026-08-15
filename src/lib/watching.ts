@@ -17,10 +17,20 @@ export interface WatchingShow {
   title: string;
   year: string | null;
   posterUrl: string | null;
-  next: NextEpisode | null;
+  next: NextEpisode;
+}
+
+export interface WatchingResult {
+  shows: WatchingShow[];
+  // Total shows in the currently-watching list, before caught-up shows are
+  // filtered out — lets the home tell "all caught up" apart from "no shows".
+  inProgressCount: number;
 }
 
 const MAX_CARDS = 12;
+// Compute next episodes for more than we show so that caught-up shows, which
+// get filtered out, don't leave the grid short of MAX_CARDS.
+const CANDIDATE_POOL = 24;
 
 function hasAired(ep: TmdbEpisode, today: string): boolean {
   return ep.airDate !== null && ep.airDate <= today;
@@ -82,7 +92,7 @@ async function computeNext(
 export async function getWatching(
   agent: Agent,
   did: string,
-): Promise<WatchingShow[]> {
+): Promise<WatchingResult> {
   const [items, recent] = await Promise.all([
     listCurrentlyWatching(agent, did),
     // listWatches over-fetches limit*2 (capped at the 100-record listRecords
@@ -110,16 +120,24 @@ export async function getWatching(
     return a.addedAt < b.addedAt ? 1 : -1;
   });
 
-  const top = ranked.slice(0, MAX_CARDS);
   const today = new Date().toISOString().slice(0, 10);
-
-  return Promise.all(
-    top.map(async (item) => ({
-      tmdbId: item.tmdbId,
-      title: item.title,
-      year: item.year,
-      posterUrl: item.posterUrl,
-      next: await computeNext(item, today),
-    })),
+  const candidates = await Promise.all(
+    ranked.slice(0, CANDIDATE_POOL).map(async (item) => {
+      const next = await computeNext(item, today);
+      if (!next) return null;
+      return {
+        tmdbId: item.tmdbId,
+        title: item.title,
+        year: item.year,
+        posterUrl: item.posterUrl,
+        next,
+      } satisfies WatchingShow;
+    }),
   );
+
+  const shows = candidates
+    .filter((s): s is WatchingShow => s !== null)
+    .slice(0, MAX_CARDS);
+
+  return { shows, inProgressCount: items.length };
 }

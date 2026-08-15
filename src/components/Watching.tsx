@@ -16,6 +16,7 @@ function WatchingCard({
   show: WatchingShow;
   onLog: (target: LogTarget) => void;
 }) {
+  const label = `S${show.next.seasonNumber}E${show.next.episodeNumber}`;
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-gray-800 bg-[#141414]">
       <Link
@@ -36,49 +37,81 @@ function WatchingCard({
           )}
         </div>
       </Link>
-      <div className="flex flex-1 flex-col gap-2 p-3">
+      <div className="flex flex-1 flex-col gap-1 p-3">
         <Link
           href={`/show/${show.tmdbId}`}
           prefetch={false}
-          className="line-clamp-1 text-sm font-medium transition-colors hover:text-white"
+          className="truncate text-sm font-medium transition-colors hover:text-white"
         >
           {show.title}
         </Link>
-        {show.next ? (
-          <>
-            <p className="text-xs text-gray-400">
-              Next · S{show.next.seasonNumber}E{show.next.episodeNumber}
-            </p>
-            <button
-              onClick={() =>
-                onLog({
-                  tmdbId: show.tmdbId,
-                  mediaType: "tv",
-                  title: show.title,
-                  year: show.year,
-                  season: show.next!.seasonNumber,
-                  episode: show.next!.episodeNumber,
-                  episodeName: show.next!.name,
-                })
-              }
-              className="mt-auto rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-gray-200"
+        <p className="text-xs text-gray-400">Next · {label}</p>
+        <div className="mt-1 flex items-end justify-between gap-2">
+          <p className="min-w-0 flex-1 truncate text-xs text-gray-300">
+            {show.next.name}
+          </p>
+          <button
+            onClick={() =>
+              onLog({
+                tmdbId: show.tmdbId,
+                mediaType: "tv",
+                title: show.title,
+                year: show.year,
+                season: show.next.seasonNumber,
+                episode: show.next.episodeNumber,
+                episodeName: show.next.name,
+              })
+            }
+            aria-label={`Log ${label}`}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-black transition-colors hover:bg-gray-200"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-5 w-5"
+              aria-hidden="true"
             >
-              Just Finished
-            </button>
-          </>
-        ) : (
-          <p className="mt-auto text-xs text-gray-500">All caught up</p>
-        )}
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          </button>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function EmptyState({ caughtUp }: { caughtUp: boolean }) {
+  return (
+    <div className="rounded-lg border-2 border-dashed border-gray-800 p-10 text-center">
+      <p className="text-gray-400">
+        {caughtUp ? "You're all caught up." : "Nothing in progress yet."}
+      </p>
+      <p className="mt-1 text-sm text-gray-500">
+        {caughtUp
+          ? "No new episodes to log right now. Search for something new to watch."
+          : "Tap the search button to find a show and log your first episode."}
+      </p>
+      <Link
+        href="/search"
+        className="mt-5 inline-block rounded-full bg-white px-5 py-2 text-sm font-semibold text-black transition-colors hover:bg-gray-200"
+      >
+        Search shows
+      </Link>
     </div>
   );
 }
 
 export default function Watching({
   shows,
+  inProgressCount,
   days,
 }: {
   shows: WatchingShow[];
+  inProgressCount: number;
   days: DiaryDay[];
 }) {
   const router = useRouter();
@@ -90,20 +123,7 @@ export default function Watching({
         <section>
           <h1 className="mb-4 text-3xl font-bold tracking-tight">Watching</h1>
           {shows.length === 0 ? (
-            <div className="rounded-lg border-2 border-dashed border-gray-800 p-10 text-center">
-              <p className="text-gray-400">
-                Nothing in progress yet.
-              </p>
-              <p className="mt-1 text-sm text-gray-500">
-                Tap the search button to find a show and log your first episode.
-              </p>
-              <Link
-                href="/search"
-                className="mt-5 inline-block rounded-full bg-white px-5 py-2 text-sm font-semibold text-black transition-colors hover:bg-gray-200"
-              >
-                Search shows
-              </Link>
-            </div>
+            <EmptyState caughtUp={inProgressCount > 0} />
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {shows.map((show) => (
