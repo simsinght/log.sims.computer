@@ -24,6 +24,7 @@ function EntryRow({ entry }: { entry: DiaryEntry }) {
         {linkable ? (
           <Link
             href={`/show/${tmdbId}`}
+            prefetch={false}
             className="font-medium transition-colors hover:text-white hover:underline"
           >
             {entry.title}

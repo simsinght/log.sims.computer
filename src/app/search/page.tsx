@@ -26,7 +26,11 @@ function useDebounced<T>(value: T, delay: number): T {
 
 function PosterCard({ result }: { result: SearchResult }) {
   return (
-    <Link href={`/show/${result.tmdbId}`} className="group block">
+    <Link
+      href={`/show/${result.tmdbId}`}
+      prefetch={false}
+      className="group block"
+    >
       <div className="relative aspect-[2/3] w-full overflow-hidden rounded-md bg-gray-800">
         {result.posterPath ? (
           <Image
