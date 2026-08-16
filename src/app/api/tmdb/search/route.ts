@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isConfigured, search, SearchType, TmdbError } from "@/lib/tmdb";
-
-function parseType(value: string | null): SearchType {
-  if (value === "movie" || value === "tv") return value;
-  return "all";
-}
+import { isConfigured, search, TmdbError } from "@/lib/tmdb";
 
 export async function GET(request: NextRequest) {
   if (!isConfigured()) {
@@ -16,10 +11,9 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q") ?? "";
-  const type = parseType(searchParams.get("type"));
 
   try {
-    const results = await search(query, type);
+    const results = await search(query, "tv");
     return NextResponse.json({ results });
   } catch (err) {
     if (err instanceof TmdbError) {
