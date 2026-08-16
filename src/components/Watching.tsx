@@ -101,6 +101,16 @@ function EmptyState({ caughtUp }: { caughtUp: boolean }) {
       >
         Search shows
       </Link>
+      {!caughtUp && (
+        <p className="mt-4">
+          <Link
+            href="/settings"
+            className="text-sm text-gray-400 underline-offset-2 transition-colors hover:text-white hover:underline"
+          >
+            Import your Trakt history
+          </Link>
+        </p>
+      )}
     </div>
   );
 }

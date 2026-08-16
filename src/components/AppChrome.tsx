@@ -62,6 +62,14 @@ function ProfileMenu() {
           role="menu"
           className="absolute right-0 mt-2 w-40 overflow-hidden rounded-lg border border-gray-800 bg-[#141414] py-1 shadow-xl"
         >
+          <Link
+            role="menuitem"
+            href="/settings"
+            onClick={() => setOpen(false)}
+            className="block w-full px-4 py-2.5 text-left text-sm text-gray-200 transition-colors hover:bg-gray-800"
+          >
+            Settings
+          </Link>
           <button
             role="menuitem"
             onClick={onLogout}
