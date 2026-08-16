@@ -350,26 +350,32 @@ export async function listWatches(
   did: string,
   limit = 50,
 ): Promise<WatchRecord[]> {
+  // listRecords orders by rkey; newest first (no reverse). Imported records'
+  // rkeys track import time, not watch time, so over-fetch and sort by
+  // watchedAt to surface recent logs. A watchedAt-ordered index is the
+  // future appview's job.
   const res = await agent.com.atproto.repo.listRecords({
     repo: did,
     collection: WATCH_COLLECTION,
-    limit,
-    reverse: true,
+    limit: Math.max(limit * 2, 100),
   });
-  return res.data.records.map((r) => {
-    const v = r.value as Record<string, unknown>;
-    return {
-      uri: r.uri,
-      tmdbId: String(v.tmdbId ?? ""),
-      mediaType: v.mediaType === "tv" ? "tv" : "movie",
-      watchedAt: typeof v.watchedAt === "string" ? v.watchedAt : "",
-      rewatch: v.rewatch === true,
-      season: typeof v.season === "number" ? v.season : undefined,
-      episode: typeof v.episode === "number" ? v.episode : undefined,
-      tags: Array.isArray(v.tags)
-        ? (v.tags.filter((t) => typeof t === "string") as string[])
-        : [],
-      note: typeof v.note === "string" ? v.note : undefined,
-    };
-  });
+  return res.data.records
+    .map((r) => {
+      const v = r.value as Record<string, unknown>;
+      return {
+        uri: r.uri,
+        tmdbId: String(v.tmdbId ?? ""),
+        mediaType: v.mediaType === "tv" ? "tv" : "movie",
+        watchedAt: typeof v.watchedAt === "string" ? v.watchedAt : "",
+        rewatch: v.rewatch === true,
+        season: typeof v.season === "number" ? v.season : undefined,
+        episode: typeof v.episode === "number" ? v.episode : undefined,
+        tags: Array.isArray(v.tags)
+          ? (v.tags.filter((t) => typeof t === "string") as string[])
+          : [],
+        note: typeof v.note === "string" ? v.note : undefined,
+      } as WatchRecord;
+    })
+    .sort((a, b) => (a.watchedAt < b.watchedAt ? 1 : -1))
+    .slice(0, limit);
 }

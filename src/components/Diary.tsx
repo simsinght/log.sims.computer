@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { DiaryDay, DiaryEntry } from "@/lib/diary";
 
 function formatDay(date: string): string {
@@ -13,10 +14,24 @@ function formatDay(date: string): string {
 }
 
 function EntryRow({ entry }: { entry: DiaryEntry }) {
+  const tmdbId = Number(entry.tmdbId);
+  const linkable =
+    entry.mediaType === "tv" && Number.isInteger(tmdbId) && tmdbId > 0;
+
   return (
     <div className="border-l-2 border-gray-800 py-3 pl-4">
       <div className="flex flex-wrap items-baseline gap-x-2">
-        <span className="font-medium">{entry.title}</span>
+        {linkable ? (
+          <Link
+            href={`/show/${tmdbId}`}
+            prefetch={false}
+            className="font-medium transition-colors hover:text-white hover:underline"
+          >
+            {entry.title}
+          </Link>
+        ) : (
+          <span className="font-medium">{entry.title}</span>
+        )}
         {entry.year && (
           <span className="text-sm text-gray-500">{entry.year}</span>
         )}

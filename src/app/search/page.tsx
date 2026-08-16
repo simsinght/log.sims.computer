@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import LogDialog, { LogTarget } from "@/components/LogDialog";
 
 interface SearchResult {
   tmdbId: number;
@@ -25,15 +24,13 @@ function useDebounced<T>(value: T, delay: number): T {
   return debounced;
 }
 
-function PosterCard({
-  result,
-  onLog,
-}: {
-  result: SearchResult;
-  onLog: (target: LogTarget) => void;
-}) {
+function PosterCard({ result }: { result: SearchResult }) {
   return (
-    <div className="group">
+    <Link
+      href={`/show/${result.tmdbId}`}
+      prefetch={false}
+      className="group block"
+    >
       <div className="relative aspect-[2/3] w-full overflow-hidden rounded-md bg-gray-800">
         {result.posterPath ? (
           <Image
@@ -48,19 +45,6 @@ function PosterCard({
             No poster
           </div>
         )}
-        <button
-          onClick={() =>
-            onLog({
-              tmdbId: result.tmdbId,
-              mediaType: result.mediaType,
-              title: result.title,
-              year: result.year,
-            })
-          }
-          className="absolute inset-x-1 bottom-1 rounded bg-white/90 py-2 text-xs font-semibold text-black opacity-0 transition-opacity hover:bg-white group-hover:opacity-100 focus:opacity-100"
-        >
-          Log
-        </button>
       </div>
       <div className="mt-2">
         <p className="truncate text-sm font-medium" title={result.title}>
@@ -68,7 +52,7 @@ function PosterCard({
         </p>
         {result.year && <p className="text-xs text-gray-500">{result.year}</p>}
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -94,7 +78,6 @@ export default function SearchPage() {
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
-  const [logTarget, setLogTarget] = useState<LogTarget | null>(null);
 
   const debouncedQuery = useDebounced(query.trim(), 300);
 
@@ -202,16 +185,11 @@ export default function SearchPage() {
               <PosterCard
                 key={`${result.mediaType}-${result.tmdbId}`}
                 result={result}
-                onLog={setLogTarget}
               />
             ))}
           </div>
         )}
       </div>
-
-      {logTarget && (
-        <LogDialog target={logTarget} onClose={() => setLogTarget(null)} />
-      )}
     </div>
   );
 }

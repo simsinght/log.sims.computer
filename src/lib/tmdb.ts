@@ -241,6 +241,121 @@ export async function getWorkDetail(
   return detail;
 }
 
+export interface TmdbSeasonSummary {
+  seasonNumber: number;
+  name: string;
+  episodeCount: number;
+  posterUrl: string | null;
+  airYear: string | null;
+}
+
+export interface ShowDetail {
+  tmdbId: number;
+  title: string;
+  year: string | null;
+  overview: string;
+  posterUrl: string | null;
+  backdropUrl: string | null;
+  seasons: TmdbSeasonSummary[];
+}
+
+interface TmdbSeasonRaw {
+  season_number?: number;
+  name?: string;
+  episode_count?: number;
+  poster_path?: string | null;
+  air_date?: string | null;
+}
+
+interface TmdbShowRaw extends TmdbDetailRaw {
+  overview?: string;
+  seasons?: TmdbSeasonRaw[];
+}
+
+const showDetailCache = new Map<number, ShowDetail>();
+
+export async function getShowDetail(id: number): Promise<ShowDetail> {
+  const cached = showDetailCache.get(id);
+  if (cached) return cached;
+
+  const raw = (await tmdbDetailJson(`/tv/${id}`)) as TmdbShowRaw;
+  const posterPath = raw.poster_path ?? null;
+  const backdropPath = raw.backdrop_path ?? null;
+
+  const seasons: TmdbSeasonSummary[] = (raw.seasons ?? [])
+    .filter((s) => typeof s.season_number === "number")
+    .map((s) => ({
+      seasonNumber: s.season_number as number,
+      name: s.name ?? `Season ${s.season_number}`,
+      episodeCount: s.episode_count ?? 0,
+      posterUrl: s.poster_path
+        ? `${TMDB_IMAGE_BASE_URL}/w185${s.poster_path}`
+        : null,
+      airYear: yearFromDate(s.air_date ?? undefined),
+    }))
+    // Specials (season 0) sort to the end; real seasons ascending.
+    .sort((a, b) => {
+      if (a.seasonNumber === 0) return 1;
+      if (b.seasonNumber === 0) return -1;
+      return a.seasonNumber - b.seasonNumber;
+    });
+
+  const detail: ShowDetail = {
+    tmdbId: raw.id,
+    title: raw.name ?? "",
+    year: yearFromDate(raw.first_air_date),
+    overview: raw.overview ?? "",
+    posterUrl: posterPath ? `${TMDB_IMAGE_BASE_URL}/w500${posterPath}` : null,
+    backdropUrl: backdropPath
+      ? `${TMDB_IMAGE_BASE_URL}/original${backdropPath}`
+      : null,
+    seasons,
+  };
+  showDetailCache.set(id, detail);
+  return detail;
+}
+
+export interface TmdbEpisode {
+  episodeNumber: number;
+  name: string;
+  overview: string;
+  airDate: string | null;
+}
+
+interface TmdbEpisodeRaw {
+  episode_number?: number;
+  name?: string;
+  overview?: string;
+  air_date?: string | null;
+}
+
+const seasonEpisodesCache = new Map<string, TmdbEpisode[]>();
+
+export async function getSeasonEpisodes(
+  showId: number,
+  seasonNumber: number,
+): Promise<TmdbEpisode[]> {
+  const cacheKey = `${showId}:${seasonNumber}`;
+  const cached = seasonEpisodesCache.get(cacheKey);
+  if (cached) return cached;
+
+  const raw = (await tmdbDetailJson(
+    `/tv/${showId}/season/${seasonNumber}`,
+  )) as { episodes?: TmdbEpisodeRaw[] };
+
+  const episodes: TmdbEpisode[] = (raw.episodes ?? [])
+    .filter((e) => typeof e.episode_number === "number")
+    .map((e) => ({
+      episodeNumber: e.episode_number as number,
+      name: e.name ?? `Episode ${e.episode_number}`,
+      overview: e.overview ?? "",
+      airDate: e.air_date ?? null,
+    }));
+
+  seasonEpisodesCache.set(cacheKey, episodes);
+  return episodes;
+}
+
 const episodeIdCache = new Map<string, string | null>();
 
 export async function getEpisodeTmdbId(
