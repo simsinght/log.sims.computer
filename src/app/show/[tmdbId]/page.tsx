@@ -1,8 +1,8 @@
 import Image from "next/image";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getShowDetail, isConfigured } from "@/lib/tmdb";
 import ShowSeasons from "@/components/ShowSeasons";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -42,12 +42,7 @@ export default async function ShowPage({
 
       <div className="container mx-auto max-w-3xl px-4 pb-16">
         <div className={show.backdropUrl ? "-mt-16 relative" : "pt-12"}>
-          <Link
-            href="/search"
-            className="text-sm text-gray-400 transition-colors hover:text-gray-200"
-          >
-            &larr; Search
-          </Link>
+          <BackLink />
 
           <div className="mt-4 flex gap-4">
             {show.posterUrl && (
