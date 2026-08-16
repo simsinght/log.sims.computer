@@ -21,7 +21,7 @@ flowchart LR
 | Collection | Whose vocabulary | What it holds | Who reads it |
 |---|---|---|---|
 | `social.popfeed.feed.listItem` | Popfeed's | one record per work: identifiers, display fields, episode progress | Popfeed, us, anyone |
-| `social.popfeed.feed.list` | Popfeed's | the lists that give items status (`watched_movies`, `currently_watching_tv_shows`, …) | Popfeed, us, anyone |
+| `social.popfeed.feed.list` | Popfeed's | the lists that give items status (`watched_movies`, `currently_watching_tv_shows`, `tv_show_watchlist`, …) | Popfeed, us, anyone |
 | `computer.sims.log.watch` | **ours** (`computer.sims.*`, NSID authority = the sims.computer domain) | one record per **play**: watchedAt, tags, notes, rewatch, season/episode — the diary layer | only us, today |
 
 ## Why this split
@@ -37,5 +37,6 @@ The corollary: our tags and notes are invisible to Popfeed (it doesn't know our 
 - `lexicons/` in this repo holds vendored JSON schema files — for reference and codegen, not enforced by the PDS (writes use `validate: false`; the PDS can't resolve these lexicons).
 - The Popfeed schemas were **initially copied from Bookhive's repo** (a Goodreads-style atproto app that vendors a Popfeed snapshot). That's Bookhive's entire role in our lexicon story — we write no `buzz.bookhive.*` records. Bookhive also served as the architecture template for the app itself.
 - The vendored snapshot proved **stale**: live Popfeed records (confirmed against the Popfeed developer's own repo, 2026-07-25) have no status fields, key TV on `tmdbId`, and use media-specific list types. Our vendored copies were corrected to match reality. Lesson recorded here on purpose: **for closed-source apps, live records in real repos are the schema authority — vendored files are hearsay.**
+- One list type we write, `tv_show_watchlist`, is **not** seen in the wild yet — Popfeed ships `movie_watchlist` but no TV watchlist, and `listType` is an unconstrained string. We derived it from Popfeed's own `<creativeWorkType>_watchlist` convention; the reasoning and the pledge to adopt Popfeed's value if one appears live are in [Record model → Lexicon sources](./records.md).
 
 Shapes and field-level rules: see [Record model](./records.md).

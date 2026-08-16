@@ -3,6 +3,9 @@ import { notFound } from "next/navigation";
 import { getShowDetail, isConfigured } from "@/lib/tmdb";
 import ShowSeasons from "@/components/ShowSeasons";
 import BackLink from "@/components/BackLink";
+import WatchlistButton from "@/components/WatchlistButton";
+import { getAuthedAgent } from "@/lib/atproto/agent";
+import { getShowListState, type ShowListState } from "@/lib/atproto/records";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +25,16 @@ export default async function ShowPage({
     show = await getShowDetail(tmdbId);
   } catch {
     notFound();
+  }
+
+  // Watchlist state is per-account; only meaningful (and the button only shown)
+  // when signed in.
+  let listState: ShowListState | null = null;
+  const agent = await getAuthedAgent();
+  if (agent?.did) {
+    listState = (await getShowListState(agent, agent.did, tmdbId).catch(
+      () => null,
+    ))?.state ?? null;
   }
 
   return (
@@ -65,6 +78,16 @@ export default async function ShowPage({
               )}
             </div>
           </div>
+
+          {listState && (
+            <div className="mt-4">
+              <WatchlistButton
+                tmdbId={show.tmdbId}
+                title={show.title}
+                initialState={listState}
+              />
+            </div>
+          )}
 
           {show.overview && (
             <p className="mt-4 text-sm leading-relaxed text-gray-300">
