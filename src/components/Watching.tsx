@@ -129,7 +129,7 @@ export default function Watching({
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ededed]">
-      <div className="container mx-auto max-w-3xl px-4 py-12">
+      <div className="container mx-auto max-w-3xl px-4 pb-12 pt-16">
         <section>
           <div className="mb-4 flex items-center justify-between gap-3">
             <h1 className="text-3xl font-bold tracking-tight">Watching</h1>

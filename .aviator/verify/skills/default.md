@@ -49,6 +49,15 @@ Navigate to `/api/auth/test-login`. If test credentials are configured in this e
 - The favicon is `/icon.svg` (linked in head); a 404 for `/favicon.ico` in the console would be a regression.
 - Target device is a phone: surfaces are verified at a phone viewport. Touch targets (profile icon, FAB, buttons) should be comfortably tappable.
 
+## PWA / installability
+
+The app is an installable PWA (the point is to add it to a phone home screen; iOS Safari is the primary target). All of the following are browser-observable:
+
+- **Web app manifest** — `GET /manifest.webmanifest` returns `200` with content-type `application/manifest+json` and JSON containing `name` and `short_name` both `"tvlog"`, `description` `"a personal TV log"`, `start_url` `"/"`, `display` `"standalone"`, `theme_color` and `background_color` both `"#0a0a0a"`, and an `icons` array (192px + 512px, plus a `purpose: "maskable"` 512px). The document `<head>` links it: `<link rel="manifest" href="/manifest.webmanifest">`.
+- **Head metadata** — the `<head>` also carries `<meta name="theme-color" content="#0a0a0a">`, an apple-touch-icon link (`<link rel="apple-touch-icon" ... href="/apple-icon.png">`, 180x180), `<meta name="apple-mobile-web-app-title" content="tvlog">`, and both `apple-mobile-web-app-capable`/`mobile-web-app-capable` = `yes`. The favicon is still `/icon.svg` (unchanged).
+- **Icons resolve** — each icon URL returns `200` with an `image/*` content-type: `/icons/icon-192.png`, `/icons/icon-512.png`, `/icons/icon-maskable-512.png`, and `/apple-icon.png`. They share the app mark (a dark rounded TV screen with three dots, one lime).
+- **Service worker + offline floor** — in a production build, `/sw.js` registers (scope `/`) and becomes the page's controller. It is intentionally minimal: it precaches only a static offline page (`/offline.html`, which reads "tvlog is offline") and serves it **only** when a top-level navigation fails on the network. It caches no app content and **never intercepts API, auth, or asset requests** — so signing in, searching, opening a show, and logging a watch must all behave exactly as without the SW (no stale data, no failed requests, no extra console noise). Registration is production-only, so it will not appear under `next dev`.
+
 ## For criteria authors (humans)
 
 Phrase acceptance criteria as browser-observable behavior. Shell-command criteria ("npm run typecheck passes") are not analyzable by the browser collector and come back as errors.
