@@ -123,6 +123,7 @@ function SeasonPanel({
                       season: season.seasonNumber,
                       episode: ep.episodeNumber,
                       episodeName: ep.name,
+                      airDate: ep.airDate,
                     })
                   }
                   className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-semibold text-black transition-colors hover:bg-gray-200"

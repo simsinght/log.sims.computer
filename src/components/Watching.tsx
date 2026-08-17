@@ -17,6 +17,8 @@ function WatchingCard({
   onLog: (target: LogTarget) => void;
 }) {
   const label = `S${show.next.seasonNumber}E${show.next.episodeNumber}`;
+  const episodeName =
+    show.next.name.trim() || `Episode ${show.next.episodeNumber}`;
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-gray-800 bg-[#141414]">
       <Link
@@ -45,10 +47,10 @@ function WatchingCard({
         >
           {show.title}
         </Link>
-        <p className="text-xs text-gray-400">Next · {label}</p>
+        <p className="truncate text-xs text-gray-300">{episodeName}</p>
         <div className="mt-1 flex items-end justify-between gap-2">
-          <p className="min-w-0 flex-1 truncate text-xs text-gray-300">
-            {show.next.name}
+          <p className="min-w-0 flex-1 truncate text-xs text-gray-500">
+            {label}
           </p>
           <button
             onClick={() =>
@@ -60,6 +62,7 @@ function WatchingCard({
                 season: show.next.seasonNumber,
                 episode: show.next.episodeNumber,
                 episodeName: show.next.name,
+                airDate: show.next.airDate,
               })
             }
             aria-label={`Log ${label}`}
