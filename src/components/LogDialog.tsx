@@ -74,6 +74,47 @@ function parseTags(raw: string): string[] {
 
 type When = "now" | "other";
 
+interface EpisodePosition {
+  season: number;
+  episode: number;
+}
+
+type CatchUpPlan =
+  | { state: "counting" }
+  | { state: "error" }
+  | {
+      state: "ready";
+      count: number;
+      first: EpisodePosition | null;
+      last: EpisodePosition | null;
+    };
+
+function positionLabel(p: EpisodePosition): string {
+  return `S${p.season}E${p.episode}`;
+}
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+function catchUpHelperText(
+  plan: CatchUpPlan | null,
+  targetLabel: string,
+): string {
+  if (!plan) return "Also log every earlier episode you haven't watched";
+  if (plan.state === "counting") return "Counting…";
+  if (plan.state === "error") return "Couldn't count earlier episodes";
+  if (plan.count === 0) return `You're already caught up before ${targetLabel}`;
+  const range =
+    plan.first && plan.last
+      ? plan.first.season === plan.last.season &&
+        plan.first.episode === plan.last.episode
+        ? ` (${positionLabel(plan.first)})`
+        : ` (${positionLabel(plan.first)} – ${positionLabel(plan.last)})`
+      : "";
+  return `Also logs ${plural(plan.count, "earlier episode")}${range}`;
+}
+
 export default function LogDialog({
   target,
   onClose,
@@ -92,6 +133,59 @@ export default function LogDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [catchUp, setCatchUp] = useState(false);
+  const [catchUpPlan, setCatchUpPlan] = useState<CatchUpPlan | null>(null);
+  const [catchUpAdded, setCatchUpAdded] = useState(0);
+  const [catchUpWarning, setCatchUpWarning] = useState<string | null>(null);
+  const dryRunSeq = useRef(0);
+
+  const catchUpEligible =
+    target.mediaType === "tv" && (target.season > 1 || target.episode > 1);
+  const episodeLabel = `S${target.season}E${target.episode}`;
+
+  function currentWatchedAt(): string {
+    return when === "now" ? new Date().toISOString() : pickedDate.toISOString();
+  }
+
+  async function onToggleCatchUp(checked: boolean) {
+    setCatchUp(checked);
+    const seq = ++dryRunSeq.current;
+    if (!checked) {
+      setCatchUpPlan(null);
+      return;
+    }
+    setCatchUpPlan({ state: "counting" });
+    try {
+      const res = await fetch("/api/log/catch-up", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tmdbId: target.tmdbId,
+          title: target.title,
+          season: target.season,
+          episode: target.episode,
+          watchedAt: currentWatchedAt(),
+          dryRun: true,
+        }),
+      });
+      if (!res.ok) throw new Error("count failed");
+      const data = (await res.json()) as {
+        count: number;
+        first: EpisodePosition | null;
+        last: EpisodePosition | null;
+      };
+      if (seq !== dryRunSeq.current) return;
+      setCatchUpPlan({
+        state: "ready",
+        count: data.count,
+        first: data.first,
+        last: data.last,
+      });
+    } catch {
+      if (seq !== dryRunSeq.current) return;
+      setCatchUpPlan({ state: "error" });
+    }
+  }
 
   const tags = useMemo(() => parseTags(tagsInput), [tagsInput]);
 
@@ -196,9 +290,9 @@ export default function LogDialog({
   async function onSubmit() {
     setSubmitting(true);
     setError(null);
+    setCatchUpWarning(null);
     try {
-      const watchedAt =
-        when === "now" ? new Date().toISOString() : pickedDate.toISOString();
+      const watchedAt = currentWatchedAt();
       const res = await fetch("/api/log", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -218,6 +312,34 @@ export default function LogDialog({
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? "Failed to log");
       }
+
+      // The primary log succeeded from here on, so a catch-up failure is a
+      // warning on the success panel rather than a failed submit.
+      if (catchUpEligible && catchUp) {
+        try {
+          const catchUpRes = await fetch("/api/log/catch-up", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tmdbId: target.tmdbId,
+              title: target.title,
+              season: target.season,
+              episode: target.episode,
+              watchedAt,
+            }),
+          });
+          const body = await catchUpRes.json().catch(() => ({}));
+          if (!catchUpRes.ok) {
+            throw new Error(body.error ?? "Failed to catch up");
+          }
+          setCatchUpAdded(typeof body.added === "number" ? body.added : 0);
+        } catch (err) {
+          setCatchUpWarning(
+            err instanceof Error ? err.message : "Failed to catch up",
+          );
+        }
+      }
+
       setDone(true);
       onLogged?.();
     } catch (err) {
@@ -280,8 +402,18 @@ export default function LogDialog({
         {done ? (
           <div className="space-y-4 px-6 pb-6">
             <div className="rounded-lg border border-green-900/60 bg-green-950/30 px-4 py-3 text-sm text-green-300">
-              Logged {target.title}.
+              <p>Logged {target.title}.</p>
+              {catchUpAdded > 0 && (
+                <p className="mt-1">
+                  Also logged {plural(catchUpAdded, "earlier episode")}.
+                </p>
+              )}
             </div>
+            {catchUpWarning && (
+              <div className="rounded-lg border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-300">
+                Logged {episodeLabel}, but catching up failed: {catchUpWarning}
+              </div>
+            )}
             <button
               onClick={onClose}
               className="w-full rounded-lg border border-gray-700 px-4 py-2.5 text-sm font-medium text-gray-200 transition-colors hover:border-gray-500 hover:text-white"
@@ -345,6 +477,26 @@ export default function LogDialog({
                     </button>
                   )}
                 </div>
+              )}
+
+              {catchUpEligible && (
+                <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-800 px-3 py-2.5">
+                  <input
+                    type="checkbox"
+                    checked={catchUp}
+                    onChange={(e) => onToggleCatchUp(e.target.checked)}
+                    aria-label="Catch up"
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-700 bg-[#0a0a0a]"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm text-gray-200">
+                      Catch up
+                    </span>
+                    <span className="mt-0.5 block text-xs text-gray-500">
+                      {catchUpHelperText(catchUpPlan, episodeLabel)}
+                    </span>
+                  </span>
+                </label>
               )}
 
               <div className="rounded-lg border border-gray-800">

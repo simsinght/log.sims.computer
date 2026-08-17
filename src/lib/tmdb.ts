@@ -320,9 +320,11 @@ export interface TmdbEpisode {
   name: string;
   overview: string;
   airDate: string | null;
+  tmdbId: string | null;
 }
 
 interface TmdbEpisodeRaw {
+  id?: number;
   episode_number?: number;
   name?: string;
   overview?: string;
@@ -330,6 +332,7 @@ interface TmdbEpisodeRaw {
 }
 
 const seasonEpisodesCache = new Map<string, TmdbEpisode[]>();
+const episodeIdCache = new Map<string, string | null>();
 
 export async function getSeasonEpisodes(
   showId: number,
@@ -350,13 +353,21 @@ export async function getSeasonEpisodes(
       name: e.name ?? `Episode ${e.episode_number}`,
       overview: e.overview ?? "",
       airDate: e.air_date ?? null,
+      tmdbId: typeof e.id === "number" ? String(e.id) : null,
     }));
+
+  // The season payload already carries every episode id, so seed the
+  // per-episode cache and spare later getEpisodeTmdbId calls a round-trip each.
+  for (const ep of episodes) {
+    episodeIdCache.set(
+      `${showId}:${seasonNumber}:${ep.episodeNumber}`,
+      ep.tmdbId,
+    );
+  }
 
   seasonEpisodesCache.set(cacheKey, episodes);
   return episodes;
 }
-
-const episodeIdCache = new Map<string, string | null>();
 
 export async function getEpisodeTmdbId(
   showId: number,

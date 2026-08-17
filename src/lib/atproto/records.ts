@@ -10,6 +10,9 @@ export const LIST_COLLECTION = "social.popfeed.feed.list";
 export const LIST_ITEM_COLLECTION = "social.popfeed.feed.listItem";
 export const WATCH_COLLECTION = "computer.sims.log.watch";
 
+// applyWrites accepts up to 200 operations per request.
+const WRITE_BATCH = 200;
+
 type MediaType = "movie" | "tv";
 
 // Popfeed keys "watched" state by which media-type-specific list an item lives
@@ -40,7 +43,7 @@ interface StrongRef {
   cid: string;
 }
 
-interface WatchedEpisode {
+export interface WatchedEpisode {
   seasonNumber: number;
   episodeNumber: number;
   tmdbId?: string;
@@ -136,6 +139,55 @@ function matchesWork(
   );
 }
 
+interface RepoRecord {
+  uri: string;
+  cid: string;
+  value: Record<string, unknown>;
+}
+
+async function findWorkItem(
+  agent: Agent,
+  did: string,
+  creativeWorkType: string,
+  tmdbId: number,
+): Promise<RepoRecord | null> {
+  const idStr = String(tmdbId);
+  const items = await listAllRecords(agent, did, LIST_ITEM_COLLECTION);
+  return (
+    items.find((r) => matchesWork(r.value, creativeWorkType, idStr)) ?? null
+  );
+}
+
+export interface ShowListItem {
+  uri: string;
+  cid: string;
+  watchedEpisodes: WatchedEpisode[];
+}
+
+// The show's listItem as the catch-up planner needs it: where it lives and
+// which episodes the account has already marked watched. Null when the show has
+// never been added to any list.
+export async function getShowListItem(
+  agent: Agent,
+  did: string,
+  tmdbId: number,
+): Promise<ShowListItem | null> {
+  const existing = await findWorkItem(agent, did, "tv_show", tmdbId);
+  if (!existing) return null;
+  const raw = Array.isArray(existing.value.watchedEpisodes)
+    ? (existing.value.watchedEpisodes as WatchedEpisode[])
+    : [];
+  return {
+    uri: existing.uri,
+    cid: existing.cid,
+    watchedEpisodes: raw.filter(
+      (e) =>
+        typeof e?.seasonNumber === "number" &&
+        typeof e?.episodeNumber === "number",
+    ),
+  };
+}
+
 function dedupeEpisodes(episodes: WatchedEpisode[]): WatchedEpisode[] {
   const seen = new Set<string>();
   const out: WatchedEpisode[] = [];
@@ -214,6 +266,9 @@ export interface UpsertWorkInput {
   watchedAt: string;
   season?: number;
   episode?: number;
+  // Extra episodes to merge into watchedEpisodes in the same putRecord, on top
+  // of the season/episode pair above. Used by catch-up backfill.
+  episodes?: WatchedEpisode[];
 }
 
 export async function upsertListItem(
@@ -221,7 +276,6 @@ export async function upsertListItem(
   did: string,
   input: UpsertWorkInput,
 ): Promise<StrongRef> {
-  const idStr = String(input.tmdbId);
   const creativeWorkType = input.mediaType === "movie" ? "movie" : "tv_show";
   const isPerEpisode =
     input.mediaType === "tv" &&
@@ -231,13 +285,15 @@ export async function upsertListItem(
 
   const detail = await getWorkDetail(input.mediaType, input.tmdbId);
 
-  const items = await listAllRecords(agent, did, LIST_ITEM_COLLECTION);
   // Match on tmdbId across ALL lists, not just the target one. A show sitting in
   // the watchlist is found here and putRecord'd in place with the new listType +
   // listUri, so its first logged episode migrates it out of the watchlist into
   // currently-watching rather than creating a duplicate.
-  const existing = items.find((r) =>
-    matchesWork(r.value, creativeWorkType, idStr),
+  const existing = await findWorkItem(
+    agent,
+    did,
+    creativeWorkType,
+    input.tmdbId,
   );
 
   const now = new Date().toISOString();
@@ -269,6 +325,9 @@ export async function upsertListItem(
     };
     if (epTmdbId) entry.tmdbId = epTmdbId;
     episodes.push(entry);
+  }
+  if (input.episodes && input.episodes.length > 0) {
+    episodes.push(...input.episodes);
   }
 
   const value: ListItemValue = {
@@ -341,6 +400,56 @@ export async function createWatch(
   return { uri: created.data.uri, cid: created.data.cid };
 }
 
+// Bulk sibling of createWatch: one applyWrites request per WRITE_BATCH records,
+// used by catch-up backfill. Deliberately carries no tags/note — backfilled
+// episodes are plain diary entries.
+export async function createWatches(
+  agent: Agent,
+  did: string,
+  inputs: CreateWatchInput[],
+): Promise<number> {
+  if (inputs.length === 0) return 0;
+
+  const createdAt = new Date().toISOString();
+  const writes = inputs.map((input) => {
+    const value: Record<string, unknown> = {
+      $type: WATCH_COLLECTION,
+      subject: input.subject,
+      tmdbId: String(input.tmdbId),
+      mediaType: input.mediaType,
+      watchedAt: input.watchedAt,
+      createdAt,
+    };
+    if (input.rewatch) value.rewatch = true;
+    if (input.season !== undefined) value.season = input.season;
+    if (input.episode !== undefined) value.episode = input.episode;
+    return {
+      $type: "com.atproto.repo.applyWrites#create",
+      collection: WATCH_COLLECTION,
+      value,
+    };
+  });
+
+  let written = 0;
+  for (let i = 0; i < writes.length; i += WRITE_BATCH) {
+    const batch = writes.slice(i, i + WRITE_BATCH);
+    try {
+      await agent.com.atproto.repo.applyWrites({
+        repo: did,
+        validate: false,
+        writes: batch as never,
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : "unknown error";
+      throw new Error(
+        `Writing watch records failed after ${written} of ${writes.length}: ${detail}`,
+      );
+    }
+    written += batch.length;
+  }
+  return written;
+}
+
 export interface CurrentlyWatchingItem {
   tmdbId: number;
   title: string;
@@ -409,9 +518,7 @@ export async function getShowListState(
   did: string,
   tmdbId: number,
 ): Promise<ShowListStatus> {
-  const idStr = String(tmdbId);
-  const items = await listAllRecords(agent, did, LIST_ITEM_COLLECTION);
-  const existing = items.find((r) => matchesWork(r.value, "tv_show", idStr));
+  const existing = await findWorkItem(agent, did, "tv_show", tmdbId);
   if (!existing) return { state: "none" };
   const listType = existing.value.listType;
   const state: ShowListState =
@@ -431,9 +538,7 @@ export async function addToWatchlist(
   did: string,
   input: { tmdbId: number; title: string },
 ): Promise<StrongRef> {
-  const idStr = String(input.tmdbId);
-  const items = await listAllRecords(agent, did, LIST_ITEM_COLLECTION);
-  const existing = items.find((r) => matchesWork(r.value, "tv_show", idStr));
+  const existing = await findWorkItem(agent, did, "tv_show", input.tmdbId);
   if (existing) return { uri: existing.uri, cid: existing.cid };
 
   const listUri = await ensureList(agent, did, "tv_show_watchlist");
