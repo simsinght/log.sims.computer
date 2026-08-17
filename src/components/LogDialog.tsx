@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import WheelDatePicker from "@/components/WheelDatePicker";
 
 export interface LogTarget {
@@ -11,11 +11,53 @@ export interface LogTarget {
   season: number;
   episode: number;
   episodeName?: string;
+  airDate?: string | null;
 }
 
 function todayNoon(): Date {
   const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
+  return new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    12,
+    0,
+    0,
+    0,
+  );
+}
+
+function localDateKey(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+// A YYYY-MM-DD air date as a local-noon Date, or null when it is missing,
+// malformed, or still in the future.
+function airDateNoon(raw: string | null | undefined): Date | null {
+  if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const [year, month, day] = raw.split("-").map(Number);
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+  if (localDateKey(date) !== raw) return null;
+  if (raw > localDateKey(new Date())) return null;
+  return date;
+}
+
+const DRAG_START_PX = 8;
+const DISMISS_PX = 90;
+const FLICK_PX_PER_MS = 0.5;
+const FLICK_MIN_PX = 24;
+
+interface SheetDrag {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  lastY: number;
+  lastT: number;
+  velocity: number;
+  dy: number;
+  active: boolean;
 }
 
 function parseTags(raw: string): string[] {
@@ -61,6 +103,96 @@ export default function LogDialog({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const airDate = useMemo(() => airDateNoon(target.airDate), [target.airDate]);
+  const airDateLabel = useMemo(
+    () =>
+      airDate
+        ? new Intl.DateTimeFormat("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }).format(airDate)
+        : null,
+    [airDate],
+  );
+
+  const panelRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<SheetDrag | null>(null);
+
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (!window.matchMedia("(max-width: 639px)").matches) return;
+    const from = e.target as HTMLElement;
+    // The wheel columns scroll themselves and the fields need their own
+    // pointer handling, so gestures starting there are never sheet drags.
+    if (from.closest(".wheel-col, input, textarea")) return;
+    const fromHeader = headerRef.current?.contains(from) ?? false;
+    const atTop = (scrollRef.current?.scrollTop ?? 0) <= 0;
+    if (!fromHeader && !atTop) return;
+    drag.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      lastY: e.clientY,
+      lastT: e.timeStamp,
+      velocity: 0,
+      dy: 0,
+      active: false,
+    };
+  }
+
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const state = drag.current;
+    const panel = panelRef.current;
+    if (!state || !panel || e.pointerId !== state.pointerId) return;
+
+    const dy = e.clientY - state.startY;
+    const dx = e.clientX - state.startX;
+    if (!state.active) {
+      // Claim the gesture only once it reads as a downward drag; an upward or
+      // sideways move belongs to the content and releases the sheet's claim.
+      if (dy > DRAG_START_PX && dy > Math.abs(dx)) {
+        state.active = true;
+        panel.setPointerCapture(state.pointerId);
+        panel.style.animation = "none";
+        panel.style.transition = "none";
+      } else {
+        if (dy < -DRAG_START_PX || Math.abs(dx) > DRAG_START_PX) {
+          drag.current = null;
+        }
+        return;
+      }
+    }
+
+    const dt = e.timeStamp - state.lastT;
+    if (dt > 0) {
+      state.velocity = (e.clientY - state.lastY) / dt;
+      state.lastY = e.clientY;
+      state.lastT = e.timeStamp;
+    }
+    state.dy = Math.max(0, dy);
+    panel.style.transform = `translateY(${state.dy}px)`;
+  }
+
+  function onPointerEnd(e: React.PointerEvent<HTMLDivElement>) {
+    const state = drag.current;
+    const panel = panelRef.current;
+    if (!state || e.pointerId !== state.pointerId) return;
+    drag.current = null;
+    if (!state.active || !panel) return;
+    if (panel.hasPointerCapture(state.pointerId)) {
+      panel.releasePointerCapture(state.pointerId);
+    }
+    const flicked = state.velocity > FLICK_PX_PER_MS && state.dy > FLICK_MIN_PX;
+    if (state.dy > DISMISS_PX || flicked) {
+      onClose();
+      return;
+    }
+    panel.style.transition = "transform .2s cubic-bezier(.32,.72,0,1)";
+    panel.style.transform = "translateY(0)";
+  }
+
   async function onSubmit() {
     setSubmitting(true);
     setError(null);
@@ -104,36 +236,45 @@ export default function LogDialog({
     >
       <style>{tvlogStyles}</style>
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        onPointerCancel={onPointerEnd}
         className="tvlog-panel flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl border border-gray-800 bg-[#141414] text-[#ededed] shadow-xl sm:max-w-md sm:rounded-xl"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        <div className="mx-auto mt-2.5 h-1 w-9 shrink-0 rounded-full bg-gray-700 sm:hidden" />
+        <div ref={headerRef} className="shrink-0 touch-none">
+          <div className="mx-auto mt-2.5 h-1 w-9 rounded-full bg-gray-700 sm:hidden" />
 
-        <div className="flex items-start justify-between gap-4 px-6 pb-4 pt-4">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-gray-500">Log</p>
-            <h2 className="mt-1 text-lg font-semibold leading-tight">
-              {target.title}
-              {target.year && (
-                <span className="ml-2 text-sm font-normal text-gray-500">
-                  {target.year}
-                </span>
-              )}
-            </h2>
-            <p className="mt-1 text-sm text-gray-400">
-              S{target.season}E{target.episode}
-              {target.episodeName ? ` · ${target.episodeName}` : ""}
-            </p>
+          <div className="flex items-start justify-between gap-4 px-6 pb-4 pt-4">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-gray-500">
+                Log
+              </p>
+              <h2 className="mt-1 text-lg font-semibold leading-tight">
+                {target.title}
+                {target.year && (
+                  <span className="ml-2 text-sm font-normal text-gray-500">
+                    {target.year}
+                  </span>
+                )}
+              </h2>
+              <p className="mt-1 text-sm text-gray-400">
+                S{target.season}E{target.episode}
+                {target.episodeName ? ` · ${target.episodeName}` : ""}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="shrink-0 text-2xl leading-none text-gray-500 transition-colors hover:text-gray-300"
+              aria-label="Close"
+            >
+              &times;
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="shrink-0 text-2xl leading-none text-gray-500 transition-colors hover:text-gray-300"
-            aria-label="Close"
-          >
-            &times;
-          </button>
         </div>
 
         {done ? (
@@ -150,7 +291,10 @@ export default function LogDialog({
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6">
+            <div
+              ref={scrollRef}
+              className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-6"
+            >
               <div
                 role="radiogroup"
                 aria-label="When did you watch this?"
@@ -185,7 +329,22 @@ export default function LogDialog({
               </div>
 
               {when === "other" && (
-                <WheelDatePicker value={pickedDate} onChange={setPickedDate} />
+                <div className="space-y-2">
+                  <WheelDatePicker
+                    value={pickedDate}
+                    onChange={setPickedDate}
+                  />
+                  {airDate && (
+                    <button
+                      type="button"
+                      onClick={() => setPickedDate(airDate)}
+                      aria-label="Use air date"
+                      className="w-full rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-400 transition-colors hover:border-gray-600 hover:text-gray-200"
+                    >
+                      Aired {airDateLabel} · use this date
+                    </button>
+                  )}
+                </div>
               )}
 
               <div className="rounded-lg border border-gray-800">

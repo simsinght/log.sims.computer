@@ -10,6 +10,7 @@ export interface NextEpisode {
   seasonNumber: number;
   episodeNumber: number;
   name: string;
+  airDate: string | null;
 }
 
 export interface WatchingShow {
@@ -73,6 +74,7 @@ async function computeNext(
         seasonNumber: latest.seasonNumber,
         episodeNumber: candidate.episodeNumber,
         name: candidate.name,
+        airDate: candidate.airDate,
       };
     }
     return null;
@@ -84,7 +86,12 @@ async function computeNext(
   ).catch(() => [] as TmdbEpisode[]);
   const first = nextSeason.find((e) => e.episodeNumber === 1);
   if (first && hasAired(first, today)) {
-    return { seasonNumber: latest.seasonNumber + 1, episodeNumber: 1, name: first.name };
+    return {
+      seasonNumber: latest.seasonNumber + 1,
+      episodeNumber: 1,
+      name: first.name,
+      airDate: first.airDate,
+    };
   }
   return null;
 }

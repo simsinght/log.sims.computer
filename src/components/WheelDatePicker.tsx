@@ -6,6 +6,7 @@ const ITEM_H = 40;
 const VISIBLE_ROWS = 5;
 const PAD = ITEM_H * 2;
 const START_YEAR = 2000;
+const SETTLE_MS = 600;
 
 const MONTH_NAMES = [
   "January",
@@ -48,6 +49,9 @@ function WheelColumn({
   const ref = useRef<HTMLDivElement>(null);
   const committed = useRef(selectedIndex);
   const rafId = useRef<number | null>(null);
+  // Index a programmatic smooth scroll is animating towards; the rows it passes
+  // through on the way must not be read back as user selections.
+  const settlingOn = useRef<number | null>(null);
 
   useLayoutEffect(() => {
     if (ref.current) ref.current.scrollTop = selectedIndex * ITEM_H;
@@ -56,10 +60,14 @@ function WheelColumn({
   }, []);
 
   useEffect(() => {
-    if (selectedIndex !== committed.current && ref.current) {
-      committed.current = selectedIndex;
-      ref.current.scrollTo({ top: selectedIndex * ITEM_H, behavior: "smooth" });
-    }
+    if (selectedIndex === committed.current || !ref.current) return;
+    committed.current = selectedIndex;
+    settlingOn.current = selectedIndex;
+    ref.current.scrollTo({ top: selectedIndex * ITEM_H, behavior: "smooth" });
+    const timer = window.setTimeout(() => {
+      settlingOn.current = null;
+    }, SETTLE_MS);
+    return () => window.clearTimeout(timer);
   }, [selectedIndex]);
 
   function handleScroll() {
@@ -68,6 +76,12 @@ function WheelColumn({
       rafId.current = null;
       const el = ref.current;
       if (!el) return;
+      if (settlingOn.current !== null) {
+        if (Math.abs(el.scrollTop - settlingOn.current * ITEM_H) < 1) {
+          settlingOn.current = null;
+        }
+        return;
+      }
       const idx = Math.max(
         0,
         Math.min(items.length - 1, Math.round(el.scrollTop / ITEM_H)),

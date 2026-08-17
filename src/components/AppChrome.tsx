@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import InstallPrompt from "@/components/InstallPrompt";
 
 interface SessionInfo {
   authenticated: boolean;
@@ -129,19 +130,13 @@ export default function AppChrome() {
 
   return (
     <>
-      <div className="fixed right-4 top-4 z-50">
-        {session ? (
+      {session && (
+        <div className="fixed right-4 top-4 z-50">
           <ProfileMenu />
-        ) : (
-          <Link
-            href="/login"
-            className="text-sm text-gray-400 transition-colors hover:text-white"
-          >
-            Sign in
-          </Link>
-        )}
-      </div>
+        </div>
+      )}
       {session && <SearchFab />}
+      <InstallPrompt hasFab={Boolean(session)} />
     </>
   );
 }
