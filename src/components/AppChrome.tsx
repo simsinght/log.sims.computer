@@ -64,7 +64,8 @@ export default function AppChrome({ signedIn }: { signedIn: boolean }) {
     return () => mq.removeEventListener("change", update);
   }, []);
 
-  const hasFab = signedIn && isPhone && pathname !== "/search";
+  const hasFab =
+    signedIn && isPhone && pathname !== "/search" && pathname !== "/settings";
 
   return (
     <>

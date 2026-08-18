@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import BackLink from "@/components/BackLink";
+import BackLink, { useHistoryBack } from "@/components/BackLink";
 
 function ProfileMenu() {
   const [open, setOpen] = useState(false);
@@ -60,6 +60,14 @@ function ProfileMenu() {
         >
           <Link
             role="menuitem"
+            href="/watchlist"
+            onClick={() => setOpen(false)}
+            className="block w-full px-4 py-2.5 text-left text-sm text-gray-200 transition-colors hover:bg-gray-800"
+          >
+            Watchlist
+          </Link>
+          <Link
+            role="menuitem"
             href="/settings"
             onClick={() => setOpen(false)}
             className="block w-full px-4 py-2.5 text-left text-sm text-gray-200 transition-colors hover:bg-gray-800"
@@ -79,6 +87,32 @@ function ProfileMenu() {
   );
 }
 
+function CloseSearchButton() {
+  const onClose = useHistoryBack();
+
+  return (
+    <button
+      type="button"
+      onClick={onClose}
+      aria-label="Close search"
+      className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-700 bg-[#141414] text-gray-300 transition-colors hover:border-gray-500 hover:text-white"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="h-5 w-5"
+        aria-hidden="true"
+      >
+        <path d="M18 6 6 18M6 6l12 12" />
+      </svg>
+    </button>
+  );
+}
+
 function searchHref(query: string): string {
   return query ? `/search?q=${encodeURIComponent(query)}` : "/search";
 }
@@ -92,7 +126,8 @@ export default function AppHeader() {
   const navigated = useRef(query);
 
   const onSearchPage = pathname === "/search";
-  const showsBack = onSearchPage || pathname.startsWith("/show/");
+  const showsBack = pathname.startsWith("/show/");
+  const showsSearchInput = pathname !== "/settings";
 
   useEffect(() => {
     // A route change adopts that route's `q` (empty off /search), but never
@@ -135,45 +170,45 @@ export default function AppHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-gray-900 bg-[#0a0a0a]/95 backdrop-blur">
       <div className="container mx-auto flex h-14 max-w-3xl items-center gap-3 px-4">
-        <div className="flex shrink-0 items-center">
-          {showsBack ? (
-            <BackLink />
-          ) : (
-            <Link
-              href="/"
-              className="text-lg font-bold tracking-tight transition-colors hover:text-white"
+        {!onSearchPage && (
+          <div className="flex shrink-0 items-center">
+            {showsBack ? (
+              <BackLink />
+            ) : (
+              <Link
+                href="/"
+                className="text-lg font-bold tracking-tight transition-colors hover:text-white"
+              >
+                tvlog
+              </Link>
+            )}
+          </div>
+        )}
+
+        <div className="flex min-w-0 flex-1 justify-end">
+          {showsSearchInput && (
+            <form
+              onSubmit={onSubmit}
+              role="search"
+              className={`min-w-0 ${onSearchPage ? "flex w-full" : "hidden sm:flex"}`}
             >
-              tvlog
-            </Link>
+              <input
+                ref={inputRef}
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Search"
+                placeholder="Search shows"
+                className={`h-9 min-w-0 rounded-full border border-gray-800 bg-[#141414] px-4 text-base placeholder-gray-600 outline-none transition-colors focus:border-gray-600 sm:text-sm ${
+                  onSearchPage ? "w-full" : "w-full sm:w-56"
+                }`}
+              />
+            </form>
           )}
         </div>
 
-        <form
-          onSubmit={onSubmit}
-          role="search"
-          className={`min-w-0 flex-1 justify-end ${onSearchPage ? "flex" : "hidden sm:flex"}`}
-        >
-          <input
-            ref={inputRef}
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search"
-            placeholder="Search shows"
-            className={`h-9 min-w-0 rounded-full border border-gray-800 bg-[#141414] px-4 text-base placeholder-gray-600 outline-none transition-colors focus:border-gray-600 sm:text-sm ${
-              onSearchPage ? "w-full sm:w-72" : "w-full sm:w-56"
-            }`}
-          />
-        </form>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <Link
-            href="/watchlist"
-            className="rounded-full border border-gray-700 px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:border-gray-500 hover:text-white"
-          >
-            Watchlist
-          </Link>
-          <ProfileMenu />
+        <div className="flex shrink-0 items-center">
+          {onSearchPage ? <CloseSearchButton /> : <ProfileMenu />}
         </div>
       </div>
     </header>
