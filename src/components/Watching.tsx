@@ -22,7 +22,6 @@ function WatchingCard({
       <div className="relative">
         <Link
           href={`/show/${show.tmdbId}`}
-          prefetch={false}
           aria-label={show.title}
           className="block"
         >
@@ -72,7 +71,6 @@ function WatchingCard({
         <p className="truncate text-sm">
           <Link
             href={`/show/${show.tmdbId}`}
-            prefetch={false}
             className="font-medium transition-colors hover:text-white"
           >
             {show.title}

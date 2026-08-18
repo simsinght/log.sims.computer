@@ -67,6 +67,14 @@ Navigate to `/api/auth/test-login`. If test credentials are configured in this e
 - `GET /api/auth/session` — always 200: `{authenticated: true, did, handle}` or `{authenticated: false}`. (Deliberately not a 401 — a 401 on this probe pollutes the browser console on every logged-out page load.) `POST /api/auth/logout` clears the session.
 - `/api/healthz` — liveness, `{"ok": true}`. `/api/diary`, `/api/log`, `/api/log/catch-up`, `/api/tmdb/title` back the diary and logging flows (`/api/log/catch-up` both counts a backfill with `dryRun: true` and writes it without). `/api/tmdb/search` returns TV results only; `/api/tmdb/season?show=<id>&season=<n>` returns a season's episodes for the show page.
 
+## Navigation & loading
+
+Every signed-in page is server-rendered on demand against the PDS and TMDB, so **route changes paint a skeleton first and fill in when the data lands**. Clicking the wordmark, a profile-menu item, a Watching card, or a search result switches the page **immediately** to a dark placeholder layout — pulsing `#141414`/`#1c1c1c` blocks in the shape of the real content (a poster grid on `/` and `/watchlist`, a backdrop band plus poster/title plus three season rows on `/show/<id>`, two panels on `/settings`) — which is then replaced by the real content a moment later. The header stays put throughout; it lives in the layout and never re-renders.
+
+- **A skeleton is not an error and not an empty state.** Before judging any signed-in page, wait for real content (a card with a poster and a title, or the page's `h1`) and screenshot that. Judging a page while its pulsing blocks are on screen will read as "no content" when the page is in fact fine.
+- The skeletons are `loading.tsx` files — `src/app/loading.tsx`, `src/app/watchlist/loading.tsx`, `src/app/show/[tmdbId]/loading.tsx`, `src/app/settings/loading.tsx`. `/watchlist` and `/settings` render their real `h1` ("Watchlist" / "Settings") in the skeleton too, so the heading can appear a beat before the grid or the panels do.
+- Hovering or scrolling links prefetches only the skeleton (not the page's data), so a `?_rsc=` request on hover is expected and cheap. In-page refreshes after a write — logging a watch from a Watching card or an episode row — do **not** swap in a skeleton: the current content stays on screen while the new data is fetched.
+
 ## App-specific gotchas
 
 - All API traffic is same-origin by design (TMDB is proxied server-side; the API key must never appear in the browser). If the browser calls api.themoviedb.org or image.tmdb.org directly, that is itself a failure worth reporting. Posters are still optimized through `/_next/image?...` on this origin, but their upstream source varies: search and show-page posters come from image.tmdb.org, while Watching-card posters come from a stored blob on cdn.bsky.app — both are proxied, so the `/_next/image` request is same-origin either way.
