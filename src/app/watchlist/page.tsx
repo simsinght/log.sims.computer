@@ -41,15 +41,9 @@ export default async function WatchlistPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ededed]">
-      <div className="container mx-auto max-w-6xl px-4 py-12">
+      <div className="container mx-auto max-w-6xl px-4 pb-12 pt-8">
         <div className="mb-8">
-          <Link
-            href="/"
-            className="text-sm text-gray-500 transition-colors hover:text-gray-300"
-          >
-            &larr; tvlog
-          </Link>
-          <h1 className="mt-4 text-3xl font-bold tracking-tight">Watchlist</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Watchlist</h1>
           <p className="mt-1 text-gray-400">Shows to watch next.</p>
         </div>
 
