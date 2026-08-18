@@ -4,7 +4,7 @@ import { getShowDetail, isConfigured } from "@/lib/tmdb";
 import ShowSeasons from "@/components/ShowSeasons";
 import WatchlistButton from "@/components/WatchlistButton";
 import { getAuthedAgent } from "@/lib/atproto/agent";
-import { getShowListState, type ShowListState } from "@/lib/atproto/records";
+import { getShowListItem, type ShowListState } from "@/lib/atproto/records";
 
 export const dynamic = "force-dynamic";
 
@@ -26,14 +26,25 @@ export default async function ShowPage({
     notFound();
   }
 
-  // Watchlist state is per-account; only meaningful (and the button only shown)
-  // when signed in.
+  // The show's listItem carries both the watchlist state and the watched
+  // episodes, so one lookup feeds the button and the season list. A failed read
+  // (undefined) leaves the button hidden, while a signed-in account with no
+  // item for this show (null) is simply "none" watched.
   let listState: ShowListState | null = null;
+  let watched: { seasonNumber: number; episodeNumber: number }[] = [];
   const agent = await getAuthedAgent();
   if (agent?.did) {
-    listState = (await getShowListState(agent, agent.did, tmdbId).catch(
-      () => null,
-    ))?.state ?? null;
+    const item = await getShowListItem(agent, agent.did, tmdbId).catch(
+      () => undefined,
+    );
+    if (item !== undefined) {
+      listState = item?.state ?? "none";
+      watched =
+        item?.watchedEpisodes.map((e) => ({
+          seasonNumber: e.seasonNumber,
+          episodeNumber: e.episodeNumber,
+        })) ?? [];
+    }
   }
 
   return (
@@ -105,6 +116,7 @@ export default async function ShowPage({
               title={show.title}
               year={show.year}
               seasons={show.seasons}
+              watched={watched}
             />
           )}
         </div>

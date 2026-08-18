@@ -161,12 +161,13 @@ async function findWorkItem(
 export interface ShowListItem {
   uri: string;
   cid: string;
+  state: ShowListState;
   watchedEpisodes: WatchedEpisode[];
 }
 
-// The show's listItem as the catch-up planner needs it: where it lives and
-// which episodes the account has already marked watched. Null when the show has
-// never been added to any list.
+// The show's listItem as the catch-up planner and show page need it: where it
+// lives, which list it sits on, and which episodes the account has already
+// marked watched. Null when the show has never been added to any list.
 export async function getShowListItem(
   agent: Agent,
   did: string,
@@ -180,6 +181,7 @@ export async function getShowListItem(
   return {
     uri: existing.uri,
     cid: existing.cid,
+    state: stateFromListType(existing.value.listType),
     watchedEpisodes: raw.filter(
       (e) =>
         typeof e?.seasonNumber === "number" &&
@@ -508,26 +510,12 @@ export async function listCurrentlyWatching(
 // already being watched/watched isn't a watchlist candidate.
 export type ShowListState = "none" | "watchlist" | "watching" | "watched";
 
-export interface ShowListStatus {
-  state: ShowListState;
-  listItemUri?: string;
-}
-
-export async function getShowListState(
-  agent: Agent,
-  did: string,
-  tmdbId: number,
-): Promise<ShowListStatus> {
-  const existing = await findWorkItem(agent, did, "tv_show", tmdbId);
-  if (!existing) return { state: "none" };
-  const listType = existing.value.listType;
-  const state: ShowListState =
-    listType === "tv_show_watchlist"
-      ? "watchlist"
-      : listType === "watched_tv_shows"
-        ? "watched"
-        : "watching";
-  return { state, listItemUri: existing.uri };
+function stateFromListType(listType: unknown): ShowListState {
+  return listType === "tv_show_watchlist"
+    ? "watchlist"
+    : listType === "watched_tv_shows"
+      ? "watched"
+      : "watching";
 }
 
 // Adds a show to the TV watchlist. A no-op that returns the existing ref when the
