@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 
 const DISMISS_KEY = "tvlog.installPromptDismissed";
 
@@ -62,6 +64,8 @@ function ShareIcon() {
 }
 
 export default function InstallPrompt({ hasFab }: { hasFab: boolean }) {
+  const pathname = usePathname();
+  const router = useRouter();
   const [mode, setMode] = useState<Mode>("none");
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(
     null,
@@ -93,7 +97,7 @@ export default function InstallPrompt({ hasFab }: { hasFab: boolean }) {
     };
   }, []);
 
-  if (mode === "none") return null;
+  if (mode === "none" || pathname === "/install") return null;
 
   async function onInstall() {
     if (!deferred) return;
@@ -103,11 +107,12 @@ export default function InstallPrompt({ hasFab }: { hasFab: boolean }) {
       await deferred.prompt();
       await deferred.userChoice;
     } catch {
-      // A prompt that can no longer be shown is not worth surfacing.
+      router.push("/install");
     }
   }
 
-  function onDismiss() {
+  function onDismiss(e: MouseEvent) {
+    e.stopPropagation();
     rememberDismissal();
     setDeferred(null);
     setMode("none");
@@ -125,17 +130,28 @@ export default function InstallPrompt({ hasFab }: { hasFab: boolean }) {
       }}
     >
       <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-[#ededed]">Install tvlog</p>
-          <p className="mt-0.5 text-xs text-gray-400">
-            Add it to your home screen for one-tap logging.
-          </p>
-          {mode === "ios" && (
+        {mode === "ios" ? (
+          <Link
+            href="/install"
+            className="min-w-0 flex-1 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-white"
+          >
+            <p className="text-sm font-medium text-[#ededed]">Install tvlog</p>
+            <p className="mt-0.5 text-xs text-gray-400">
+              Add it to your home screen for one-tap logging.
+            </p>
             <p className="mt-1.5 text-xs text-gray-300">
               Tap <ShareIcon /> Share, then &quot;Add to Home Screen&quot;
+              <span className="ml-2 font-semibold text-white">How &rarr;</span>
             </p>
-          )}
-        </div>
+          </Link>
+        ) : (
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-[#ededed]">Install tvlog</p>
+            <p className="mt-0.5 text-xs text-gray-400">
+              Add it to your home screen for one-tap logging.
+            </p>
+          </div>
+        )}
         {mode === "install" && (
           <button
             type="button"
