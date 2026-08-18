@@ -21,67 +21,67 @@ function WatchingCard({
     show.next.name.trim() || `Episode ${show.next.episodeNumber}`;
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-gray-800 bg-[#141414]">
-      <Link
-        href={`/show/${show.tmdbId}`}
-        prefetch={false}
-        aria-label={show.title}
-        className="block"
-      >
-        <div className="relative aspect-[2/3] w-full bg-gray-800">
-          {show.posterUrl && (
-            <Image
-              src={show.posterUrl}
-              alt=""
-              fill
-              sizes="(min-width: 640px) 200px, 45vw"
-              className="object-cover"
-            />
-          )}
-        </div>
-      </Link>
-      <div className="flex flex-1 flex-col gap-1 p-3">
+      <div className="relative">
         <Link
           href={`/show/${show.tmdbId}`}
           prefetch={false}
-          className="truncate text-sm font-medium transition-colors hover:text-white"
+          aria-label={show.title}
+          className="block"
         >
-          {show.title}
+          <div className="relative aspect-[2/3] w-full bg-gray-800">
+            {show.posterUrl && (
+              <Image
+                src={show.posterUrl}
+                alt=""
+                fill
+                sizes="(min-width: 640px) 200px, 45vw"
+                className="object-cover"
+              />
+            )}
+          </div>
         </Link>
-        <p className="truncate text-xs text-gray-300">{episodeName}</p>
-        <div className="mt-1 flex items-end justify-between gap-2">
-          <p className="min-w-0 flex-1 truncate text-xs text-gray-500">
-            {label}
-          </p>
-          <button
-            onClick={() =>
-              onLog({
-                tmdbId: show.tmdbId,
-                mediaType: "tv",
-                title: show.title,
-                year: show.year,
-                season: show.next.seasonNumber,
-                episode: show.next.episodeNumber,
-                episodeName: show.next.name,
-                airDate: show.next.airDate,
-              })
-            }
-            aria-label={`Log ${label}`}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-black transition-colors hover:bg-gray-200"
+        <button
+          onClick={() =>
+            onLog({
+              tmdbId: show.tmdbId,
+              mediaType: "tv",
+              title: show.title,
+              year: show.year,
+              season: show.next.seasonNumber,
+              episode: show.next.episodeNumber,
+              episodeName: show.next.name,
+              airDate: show.next.airDate,
+            })
+          }
+          aria-label={`Log ${label}`}
+          className="absolute bottom-2 right-2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white text-black shadow-lg shadow-black/40 transition-colors hover:bg-gray-200"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-5 w-5"
+            aria-hidden="true"
           >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-5 w-5"
-              aria-hidden="true"
-            >
-              <path d="M20 6 9 17l-5-5" />
-            </svg>
-          </button>
-        </div>
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        </button>
+      </div>
+      <div className="flex flex-1 flex-col gap-0.5 p-3">
+        <p className="truncate text-sm">
+          <Link
+            href={`/show/${show.tmdbId}`}
+            prefetch={false}
+            className="font-medium transition-colors hover:text-white"
+          >
+            {show.title}
+          </Link>
+          <span className="text-gray-500"> · {label}</span>
+        </p>
+        <p className="truncate text-xs text-gray-300">{episodeName}</p>
       </div>
     </div>
   );
