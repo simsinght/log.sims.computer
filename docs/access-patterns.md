@@ -19,7 +19,7 @@ All in `src/lib/tmdb.ts`: module-level `Map`s (title, work detail, show detail, 
 | Surface | PDS reads / request | TMDB (cold → warm) | Notes |
 |---|---|---|---|
 | Landing (logged out) | 0 | 0 | cookie read only |
-| Home (signed in) | **9** (7-page listItem scan + 2 separate 1-page watch reads) | 24–48 season + ≤100 title → **0** | scans are the latency floor; `getWatching` and `buildDiary` each do their own `listWatches` |
+| Home (signed in) | **8** (7-page listItem scan + 1 one-page watch read) | 24–48 season → **0** | scans are the latency floor; the home is the watching grid only — the Recent/diary section (and its own `listWatches` + ≤100 title lookups) was dropped, so `getWatching`'s single `listWatches` is the whole watch read |
 | Show page | **7** (full listItem scan to resolve ONE show's state) | 1 → 0 | seasons lazy-load client-side, cached |
 | Search | 0 | 1 per debounced query, **uncached** | repeated/backspaced queries re-hit TMDB |
 | Watchlist page | **7** (full scan, filtered) | 0 | display fields denormalized on records |
@@ -37,7 +37,7 @@ The app-path `listAllRecords` (`src/lib/atproto/records.ts`) caps at **20 pages 
 In order of leverage:
 
 1. **Per-DID in-memory listItem cache with write-through invalidation.** The 7-page scan is paid on home, show pages, watchlist, every log, and every watchlist toggle; the deployment is single-instance (like the OAuth/TMDB caches already assume), so a cached parsed set patched on write turns ~7 serial round-trips into 0 on every hot path — and makes show-state lookup (today: full scan for one key) free.
-2. **One shared, `watchedAt`-indexed diary read.** Fixes the double `listWatches` on home, and the real limitation of the current diary: it only ever sees the 100 highest-rkey watch records, then sorts within that window — recent watches whose rkey falls outside it are silently absent.
+2. **A `watchedAt`-indexed diary read.** The home no longer reads the diary (that double `listWatches` is gone), but `/api/diary` still carries the real limitation: it only ever sees the 100 highest-rkey watch records, then sorts within that window — recent watches whose rkey falls outside it are silently absent.
 3. **Bound + TTL the TMDB caches; cache `search()`.** The only unbounded growth and the only fully-uncached TMDB path.
 
 The end state was always the appview (`docs/architecture.md`: Jetstream → SQLite) — that is what turns these questions into indexed local queries and is the right move once a second instance or a larger library outgrows in-process caching. Items 1–2 are the cheap interim that keeps the no-database property.

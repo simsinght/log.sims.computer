@@ -5,9 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import LogDialog, { LogTarget } from "@/components/LogDialog";
-import { DiaryDays } from "@/components/Diary";
 import type { WatchingShow } from "@/lib/watching";
-import type { DiaryDay } from "@/lib/diary";
 
 function WatchingCard({
   show,
@@ -121,11 +119,9 @@ function EmptyState({ caughtUp }: { caughtUp: boolean }) {
 export default function Watching({
   shows,
   inProgressCount,
-  days,
 }: {
   shows: WatchingShow[];
   inProgressCount: number;
-  days: DiaryDay[];
 }) {
   const router = useRouter();
   const [logTarget, setLogTarget] = useState<LogTarget | null>(null);
@@ -148,15 +144,6 @@ export default function Watching({
             </div>
           )}
         </section>
-
-        {days.length > 0 && (
-          <section className="mt-12">
-            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
-              Recent
-            </h2>
-            <DiaryDays days={days} />
-          </section>
-        )}
       </div>
 
       {logTarget && (

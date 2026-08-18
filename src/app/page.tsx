@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { getAuthedAgent } from "@/lib/atproto/agent";
 import { getSession } from "@/lib/session";
-import { buildDiary, type DiaryDay } from "@/lib/diary";
 import { getWatching, type WatchingResult } from "@/lib/watching";
 import Watching from "@/components/Watching";
 
@@ -29,22 +28,17 @@ export default async function Home() {
   const agent = await getAuthedAgent();
   if (!agent || !agent.did) return <Landing />;
 
-  const [watchingResult, diaryResult] = await Promise.allSettled([
-    getWatching(agent, agent.did),
-    buildDiary(agent, agent.did, 20),
-  ]);
-  const watching: WatchingResult =
-    watchingResult.status === "fulfilled"
-      ? watchingResult.value
-      : { shows: [], inProgressCount: 0 };
-  const days: DiaryDay[] =
-    diaryResult.status === "fulfilled" ? diaryResult.value : [];
+  let watching: WatchingResult = { shows: [], inProgressCount: 0 };
+  try {
+    watching = await getWatching(agent, agent.did);
+  } catch {
+    watching = { shows: [], inProgressCount: 0 };
+  }
 
   return (
     <Watching
       shows={watching.shows}
       inProgressCount={watching.inProgressCount}
-      days={days}
     />
   );
 }
