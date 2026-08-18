@@ -1,14 +1,18 @@
 "use client";
 
+import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 
-export default function BackLink() {
+export function useHistoryBack() {
   const router = useRouter();
-
-  function onBack() {
+  return useCallback(() => {
     if (window.history.length > 1) router.back();
     else router.push("/");
-  }
+  }, [router]);
+}
+
+export default function BackLink() {
+  const onBack = useHistoryBack();
 
   return (
     <button
