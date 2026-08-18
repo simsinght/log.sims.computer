@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 interface SearchResult {
   tmdbId: number;
@@ -14,15 +15,6 @@ interface SearchResult {
 }
 
 const POSTER_BASE = "https://image.tmdb.org/t/p/w342";
-
-function useDebounced<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const id = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(id);
-  }, [value, delay]);
-  return debounced;
-}
 
 function PosterCard({ result }: { result: SearchResult }) {
   return (
@@ -71,15 +63,15 @@ function SignInPrompt() {
   );
 }
 
-export default function SearchPage() {
-  const [query, setQuery] = useState("");
+function SearchResults() {
+  const searchParams = useSearchParams();
+  const query = (searchParams.get("q") ?? "").trim();
+
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
-
-  const debouncedQuery = useDebounced(query.trim(), 300);
 
   useEffect(() => {
     fetch("/api/auth/session")
@@ -89,7 +81,7 @@ export default function SearchPage() {
   }, []);
 
   useEffect(() => {
-    if (!signedIn || !debouncedQuery) {
+    if (!signedIn || !query) {
       setResults([]);
       setHasSearched(false);
       setError(null);
@@ -100,7 +92,7 @@ export default function SearchPage() {
     setLoading(true);
     setError(null);
 
-    const params = new URLSearchParams({ q: debouncedQuery });
+    const params = new URLSearchParams({ q: query });
     fetch(`/api/tmdb/search?${params.toString()}`, {
       signal: controller.signal,
     })
@@ -124,7 +116,7 @@ export default function SearchPage() {
       .finally(() => setLoading(false));
 
     return () => controller.abort();
-  }, [debouncedQuery, signedIn]);
+  }, [query, signedIn]);
 
   if (signedIn === null) {
     return <div className="min-h-screen bg-[#0a0a0a]" />;
@@ -136,29 +128,7 @@ export default function SearchPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ededed]">
-      <div className="container mx-auto max-w-6xl px-4 py-12">
-        <div className="mb-8">
-          <Link
-            href="/"
-            className="text-sm text-gray-500 transition-colors hover:text-gray-300"
-          >
-            &larr; tvlog
-          </Link>
-          <h1 className="mt-4 text-3xl font-bold tracking-tight">Search</h1>
-          <p className="mt-1 text-gray-400">Find a show to log.</p>
-        </div>
-
-        <div className="mb-8">
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search TV shows…"
-            autoFocus
-            className="w-full rounded-lg border border-gray-800 bg-[#141414] px-4 py-3 text-base placeholder-gray-600 outline-none transition-colors focus:border-gray-600"
-          />
-        </div>
-
+      <div className="container mx-auto max-w-6xl px-4 pb-12 pt-6">
         {error && (
           <div className="rounded-lg border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm text-red-300">
             {error}
@@ -167,15 +137,9 @@ export default function SearchPage() {
 
         {loading && <p className="text-sm text-gray-500">Searching…</p>}
 
-        {!loading && !error && !hasSearched && (
-          <div className="rounded-lg border-2 border-dashed border-gray-800 p-12 text-center text-gray-500">
-            Start typing to search TMDB for TV shows.
-          </div>
-        )}
-
         {!loading && !error && hasSearched && results.length === 0 && (
           <div className="rounded-lg border-2 border-dashed border-gray-800 p-12 text-center text-gray-500">
-            No results for &ldquo;{debouncedQuery}&rdquo;.
+            No results for &ldquo;{query}&rdquo;.
           </div>
         )}
 
@@ -191,5 +155,13 @@ export default function SearchPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#0a0a0a]" />}>
+      <SearchResults />
+    </Suspense>
   );
 }

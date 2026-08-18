@@ -132,17 +132,8 @@ export default function Watching({
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ededed]">
-      <div className="container mx-auto max-w-3xl px-4 pb-12 pt-16">
+      <div className="container mx-auto max-w-3xl px-4 pb-12 pt-6">
         <section>
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h1 className="text-3xl font-bold tracking-tight">Watching</h1>
-            <Link
-              href="/watchlist"
-              className="shrink-0 rounded-full border border-gray-700 px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:border-gray-500 hover:text-white"
-            >
-              Watchlist
-            </Link>
-          </div>
           {shows.length === 0 ? (
             <EmptyState caughtUp={inProgressCount > 0} />
           ) : (

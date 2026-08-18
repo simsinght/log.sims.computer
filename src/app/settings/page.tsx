@@ -42,16 +42,8 @@ export default async function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ededed]">
-      <div className="container mx-auto max-w-2xl px-4 py-12">
-        <div>
-          <Link
-            href="/"
-            className="text-sm text-gray-500 transition-colors hover:text-gray-300"
-          >
-            &larr; tvlog
-          </Link>
-          <h1 className="mt-4 text-3xl font-bold tracking-tight">Settings</h1>
-        </div>
+      <div className="container mx-auto max-w-2xl px-4 pb-12 pt-8">
+        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
         <SettingsClient
           handle={handle}
           did={did}

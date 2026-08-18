@@ -2,7 +2,6 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { getShowDetail, isConfigured } from "@/lib/tmdb";
 import ShowSeasons from "@/components/ShowSeasons";
-import BackLink from "@/components/BackLink";
 import WatchlistButton from "@/components/WatchlistButton";
 import { getAuthedAgent } from "@/lib/atproto/agent";
 import { getShowListState, type ShowListState } from "@/lib/atproto/records";
@@ -54,10 +53,8 @@ export default async function ShowPage({
       )}
 
       <div className="container mx-auto max-w-3xl px-4 pb-16">
-        <div className={show.backdropUrl ? "-mt-16 relative" : "pt-12"}>
-          <BackLink />
-
-          <div className="mt-4 flex gap-4">
+        <div className={show.backdropUrl ? "relative -mt-7" : "pt-8"}>
+          <div className="flex gap-4">
             {show.posterUrl && (
               <div className="relative aspect-[2/3] w-24 shrink-0 overflow-hidden rounded-md bg-gray-800 sm:w-32">
                 <Image

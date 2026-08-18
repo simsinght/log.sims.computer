@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import "./globals.css";
 import AppChrome from "@/components/AppChrome";
+import { getSession } from "@/lib/session";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 
 export const metadata: Metadata = {
@@ -24,15 +26,21 @@ export const viewport: Viewport = {
   themeColor: "#0a0a0a",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Cookie-only read (no PDS round-trip) so the header renders in the same
+  // paint as the page instead of appearing after a client session fetch.
+  const session = await getSession();
+
   return (
     <html lang="en">
       <body>
-        <AppChrome />
+        <Suspense fallback={null}>
+          <AppChrome signedIn={Boolean(session.did)} />
+        </Suspense>
         {children}
         <ServiceWorkerRegister />
       </body>
