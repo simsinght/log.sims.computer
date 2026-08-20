@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Agent } from "@atproto/api";
 import { getOAuthClient } from "@/lib/atproto/oauth";
 import { resolveIdentity } from "@/lib/atproto/identity";
+import { initSpacesForSession } from "@/lib/atproto/spaces";
 import { getSession } from "@/lib/session";
 import { BASE_URL } from "@/config/baseUrl";
 
@@ -25,6 +27,7 @@ export async function GET(request: NextRequest) {
     session.did = did;
     session.handle = handle ?? did;
     session.method = "oauth";
+    await initSpacesForSession(new Agent(oauthSession), session);
     await session.save();
 
     return NextResponse.redirect(new URL("/", BASE_URL), { status: 302 });
