@@ -1,9 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-export default function LoginPage() {
+const ERROR_MESSAGES: Record<string, string> = {
+  oauth: "Sign-in didn't complete. Please try again.",
+  resolve:
+    "We couldn't start sign-in for that account. If your PDS handle is new, its DNS record may not be live yet — try your DID (did:plc:…) or your PDS URL (https://pds.sims.computer) instead.",
+  missing: "Enter a handle, DID, or PDS URL to sign in.",
+};
+
+function LoginForm() {
+  const searchParams = useSearchParams();
+  const errorCode = searchParams.get("error");
+  const oauthError = errorCode ? ERROR_MESSAGES[errorCode] : null;
+
   const [oauthHandle, setOauthHandle] = useState("");
   const [pwHandle, setPwHandle] = useState("");
   const [password, setPassword] = useState("");
@@ -44,9 +56,15 @@ export default function LoginPage() {
           </Link>
           <h1 className="mt-4 text-3xl font-bold tracking-tight">Sign in</h1>
           <p className="mt-1 text-gray-400">
-            Sign in with your atproto (Bluesky) account.
+            Sign in with your atproto account — Bluesky or a self-hosted PDS.
           </p>
         </div>
+
+        {oauthError && (
+          <div className="mb-6 rounded-lg border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm text-red-300">
+            {oauthError}
+          </div>
+        )}
 
         <form
           action="/api/auth/login"
@@ -54,7 +72,7 @@ export default function LoginPage() {
           className="flex flex-col gap-3"
         >
           <label htmlFor="oauth-handle" className="text-sm text-gray-400">
-            Handle
+            Handle, DID, or PDS URL
           </label>
           <input
             id="oauth-handle"
@@ -67,6 +85,12 @@ export default function LoginPage() {
             placeholder="you.bsky.social"
             className="w-full rounded-lg border border-gray-800 bg-[#141414] px-4 py-3 text-base placeholder-gray-600 outline-none transition-colors focus:border-gray-600"
           />
+          <p className="text-xs text-gray-500">
+            New PDS account whose handle isn&apos;t resolving yet? Sign in with
+            your DID (<code className="text-gray-400">did:plc:…</code>) or your
+            PDS URL (
+            <code className="text-gray-400">https://pds.sims.computer</code>).
+          </p>
           <button
             type="submit"
             className="rounded-lg bg-gray-100 px-4 py-3 text-sm font-medium text-black transition-colors hover:bg-white"
@@ -120,5 +144,13 @@ export default function LoginPage() {
         </details>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }
