@@ -26,6 +26,13 @@ import {
   prefetchDetails,
 } from "./tmdb.ts";
 import {
+  PUBLIC_REPO,
+  createRecord as writeCreate,
+  putRecord as writePut,
+  applyWritesCreate,
+  type BatchCreate,
+} from "../atproto/write.ts";
+import {
   LIST_ITEM_COLLECTION,
   LIST_COLLECTION,
   WATCH_COLLECTION,
@@ -282,7 +289,7 @@ export async function executeImport(
         );
         const created = await withRateLimit(
           () =>
-            agent.com.atproto.repo.createRecord({
+            writeCreate(agent, PUBLIC_REPO, {
               repo: did,
               collection: LIST_ITEM_COLLECTION,
               record: value,
@@ -291,7 +298,7 @@ export async function executeImport(
           { onWait },
         );
         clearWait();
-        subjectByWork.set(g.key, { uri: created.data.uri, cid: created.data.cid });
+        subjectByWork.set(g.key, { uri: created.uri, cid: created.cid });
       } else {
         const prevEps =
           (existing.value.watchedEpisodes as WatchedEpisode[] | undefined) ?? [];
@@ -314,7 +321,7 @@ export async function executeImport(
           );
           const put = await withRateLimit(
             () =>
-              agent.com.atproto.repo.putRecord({
+              writePut(agent, PUBLIC_REPO, {
                 repo: did,
                 collection: LIST_ITEM_COLLECTION,
                 rkey,
@@ -324,7 +331,7 @@ export async function executeImport(
             { onWait },
           );
           clearWait();
-          subjectByWork.set(g.key, { uri: put.data.uri, cid: put.data.cid });
+          subjectByWork.set(g.key, { uri: put.uri, cid: put.cid });
         }
       }
     } catch (err) {
@@ -341,7 +348,7 @@ export async function executeImport(
   progress.phase = "watches";
   emit();
   log("\nPhase 2: writing watch diary records...");
-  const writes: Record<string, unknown>[] = [];
+  const writes: BatchCreate[] = [];
   let missingSubject = 0;
   for (let i = 0; i < events.length; i++) {
     const ev = events[i];
@@ -356,7 +363,6 @@ export async function executeImport(
     const value = buildWatchValue(ev, rewatchFlags[i], subject);
     if (existingWatchKeys.has(watchKey(value))) continue;
     writes.push({
-      $type: "com.atproto.repo.applyWrites#create",
       collection: WATCH_COLLECTION,
       value,
     });
@@ -368,10 +374,10 @@ export async function executeImport(
     try {
       await withRateLimit(
         () =>
-          agent.com.atproto.repo.applyWrites({
+          applyWritesCreate(agent, PUBLIC_REPO, {
             repo: did,
             validate: false,
-            writes: batch as never,
+            creates: batch,
           }),
         { onWait },
       );
@@ -423,7 +429,7 @@ export async function executeImport(
         );
         await withRateLimit(
           () =>
-            agent.com.atproto.repo.createRecord({
+            writeCreate(agent, PUBLIC_REPO, {
               repo: did,
               collection: LIST_ITEM_COLLECTION,
               record: value,
