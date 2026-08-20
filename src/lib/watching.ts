@@ -4,6 +4,7 @@ import {
   listWatches,
   type CurrentlyWatchingItem,
 } from "@/lib/atproto/records";
+import { PUBLIC_REPO, type WriteDestination } from "@/lib/atproto/write";
 import { getSeasonEpisodes, type TmdbEpisode } from "@/lib/tmdb";
 
 export interface NextEpisode {
@@ -99,13 +100,16 @@ async function computeNext(
 export async function getWatching(
   agent: Agent,
   did: string,
+  diaryDest: WriteDestination = PUBLIC_REPO,
 ): Promise<WatchingResult> {
   const [items, recent] = await Promise.all([
+    // Currently-watching is the public Popfeed shelf — unchanged. Only the
+    // diary watch records follow the space routing.
     listCurrentlyWatching(agent, did),
     // listWatches over-fetches limit*2 (capped at the 100-record listRecords
     // page), so 50 keeps that request within bounds while covering the shows
     // with recent activity.
-    listWatches(agent, did, 50),
+    listWatches(agent, did, 50, diaryDest),
   ]);
 
   // Imported list items share a single addedAt, so rank by the most recent

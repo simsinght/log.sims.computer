@@ -171,6 +171,44 @@ export function createWatchlistSpace(
   return ensureSpace(agent, ownerDid, WATCHLIST_SPACE);
 }
 
+// Deterministic space URIs — the routing layer (./routing.ts) needs these
+// without paying for a getSpace round trip on the hot path.
+export function diarySpaceUri(ownerDid: string): string {
+  return spaceUriFor(ownerDid, DIARY_SPACE);
+}
+export function watchlistSpaceUri(ownerDid: string): string {
+  return spaceUriFor(ownerDid, WATCHLIST_SPACE);
+}
+
+// Does this owner have a shared watchlist space yet? Gates whether watchlist
+// reads/writes route to the space or stay on the public repo.
+export function watchlistSpaceExists(
+  agent: Agent,
+  ownerDid: string,
+): Promise<boolean> {
+  return spaceExists(agent, watchlistSpaceUri(ownerDid));
+}
+
+// Just the member DIDs (no handle resolution) — the cross-member read path
+// needs the list of writer repos to sweep, cheaply.
+export async function spaceMemberDids(
+  agent: Agent,
+  spaceUri: string,
+): Promise<string[]> {
+  const dids: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const res = await agent.com.atproto.simplespace.listMembers({
+      space: spaceUri,
+      cursor,
+      limit: 100,
+    });
+    for (const m of res.data.members) dids.push(m.did);
+    cursor = res.data.cursor;
+  } while (cursor && dids.length < 500);
+  return dids;
+}
+
 async function listMembersResolved(
   agent: Agent,
   spaceUri: string,

@@ -1,5 +1,6 @@
 import type { Agent } from "@atproto/api";
 import { listWatches, type WatchRecord } from "@/lib/atproto/records";
+import { PUBLIC_REPO, type WriteDestination } from "@/lib/atproto/write";
 import { getTitle } from "@/lib/tmdb";
 
 export interface DiaryEntry {
@@ -53,8 +54,9 @@ export async function buildDiary(
   agent: Agent,
   did: string,
   limit = 50,
+  dest: WriteDestination = PUBLIC_REPO,
 ): Promise<DiaryDay[]> {
-  const watches = await listWatches(agent, did, limit);
+  const watches = await listWatches(agent, did, limit, dest);
   const titles = await resolveTitles(watches);
 
   const entries: DiaryEntry[] = watches.map((w) => {
