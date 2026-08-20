@@ -12,11 +12,19 @@ import {
   deleteRecord as writeDelete,
   applyWritesCreate,
   listRecords as seamListRecords,
+  type WriteDestination,
 } from "@/lib/atproto/write";
+import type { WatchlistRoute } from "@/lib/atproto/routing";
+import { SpaceCredentialManager } from "@/lib/atproto/space-credentials";
+import { spaceMemberDids } from "@/lib/atproto/spaces";
 
 export const LIST_COLLECTION = "social.popfeed.feed.list";
 export const LIST_ITEM_COLLECTION = "social.popfeed.feed.listItem";
 export const WATCH_COLLECTION = "computer.sims.log.watch";
+// The shared-watchlist space's record type. A lightweight per-show entry —
+// written into each member's own space-repo, no Popfeed list/blob machinery.
+// Spaces don't validate lexicons, so this ships without a lexicon file.
+export const WATCHLIST_ITEM_COLLECTION = "computer.sims.log.watchlistItem";
 
 // applyWrites accepts up to 200 operations per request.
 const WRITE_BATCH = 200;
@@ -383,10 +391,13 @@ export interface CreateWatchInput {
   note?: string;
 }
 
+// `dest` routes the diary record: PUBLIC_REPO (bsky, unchanged) or the user's
+// diary space. Either way it's the user's OWN repo, so it stays a self-op.
 export async function createWatch(
   agent: Agent,
   did: string,
   input: CreateWatchInput,
+  dest: WriteDestination = PUBLIC_REPO,
 ): Promise<StrongRef> {
   const record: Record<string, unknown> = {
     subject: input.subject,
@@ -401,7 +412,7 @@ export async function createWatch(
   if (input.tags && input.tags.length > 0) record.tags = input.tags;
   if (input.note) record.note = input.note;
 
-  const created = await writeCreate(agent, PUBLIC_REPO, {
+  const created = await writeCreate(agent, dest, {
     repo: did,
     collection: WATCH_COLLECTION,
     record,
@@ -417,6 +428,7 @@ export async function createWatches(
   agent: Agent,
   did: string,
   inputs: CreateWatchInput[],
+  dest: WriteDestination = PUBLIC_REPO,
 ): Promise<number> {
   if (inputs.length === 0) return 0;
 
@@ -443,7 +455,7 @@ export async function createWatches(
   for (let i = 0; i < writes.length; i += WRITE_BATCH) {
     const batch = writes.slice(i, i + WRITE_BATCH);
     try {
-      await applyWritesCreate(agent, PUBLIC_REPO, {
+      await applyWritesCreate(agent, dest, {
         repo: did,
         validate: false,
         creates: batch,
@@ -525,14 +537,48 @@ function stateFromListType(listType: unknown): ShowListState {
       : "watching";
 }
 
+// A shared-watchlist entry rkey is deterministic per show, so add is idempotent
+// (putRecord overwrites) and remove targets it without a scan.
+function watchlistItemRkey(tmdbId: number): string {
+  return `tmdb-${tmdbId}`;
+}
+
 // Adds a show to the TV watchlist. A no-op that returns the existing ref when the
 // show is already tracked on any list — a watched/watching show shouldn't be
 // pulled back onto the watchlist.
+//
+// When `wl` routes to the shared-watchlist space, the entry is written into the
+// caller's OWN space-repo (a self-op) as a lightweight watchlistItem — any
+// member can add, and every member sees it via the cross-member read below.
 export async function addToWatchlist(
   agent: Agent,
   did: string,
   input: { tmdbId: number; title: string },
+  wl: WatchlistRoute = { mode: "public" },
 ): Promise<StrongRef> {
+  if (wl.mode === "space") {
+    const dest: WriteDestination = { kind: "space", spaceUri: wl.spaceUri };
+    const detail = await getWorkDetail("tv", input.tmdbId);
+    const value: Record<string, unknown> = {
+      $type: WATCHLIST_ITEM_COLLECTION,
+      tmdbId: String(input.tmdbId),
+      mediaType: "tv",
+      title: input.title || detail.title,
+      addedAt: new Date().toISOString(),
+    };
+    const posterUrl = detail.posterUrl("w500");
+    if (posterUrl) value.posterUrl = posterUrl;
+    if (detail.releaseDate) value.year = detail.releaseDate.slice(0, 4);
+    const put = await writePut(agent, dest, {
+      repo: did,
+      collection: WATCHLIST_ITEM_COLLECTION,
+      rkey: watchlistItemRkey(input.tmdbId),
+      record: value,
+      validate: false,
+    });
+    return { uri: put.uri, cid: put.cid };
+  }
+
   const existing = await findWorkItem(agent, did, "tv_show", input.tmdbId);
   if (existing) return { uri: existing.uri, cid: existing.cid };
 
@@ -559,11 +605,31 @@ export async function addToWatchlist(
 
 // Deletes the watchlist listItem for a show. Returns false when the show isn't
 // on the watchlist (leaving items in other lists untouched).
+//
+// In the shared-watchlist space, a member removes only THEIR OWN entry for the
+// show (each member writes into their own space-repo); another member's entry
+// keeps the show on the shared list, matching multi-writer semantics.
 export async function removeFromWatchlist(
   agent: Agent,
   did: string,
   tmdbId: number,
+  wl: WatchlistRoute = { mode: "public" },
 ): Promise<boolean> {
+  if (wl.mode === "space") {
+    const dest: WriteDestination = { kind: "space", spaceUri: wl.spaceUri };
+    try {
+      await writeDelete(agent, dest, {
+        repo: did,
+        collection: WATCHLIST_ITEM_COLLECTION,
+        rkey: watchlistItemRkey(tmdbId),
+      });
+      return true;
+    } catch {
+      // No own entry for this show — nothing removed.
+      return false;
+    }
+  }
+
   const idStr = String(tmdbId);
   const items = await listAllRecords(agent, did, LIST_ITEM_COLLECTION);
   const existing = items.find(
@@ -592,7 +658,10 @@ export interface WatchlistShow {
 export async function listWatchlist(
   agent: Agent,
   did: string,
+  wl: WatchlistRoute = { mode: "public" },
 ): Promise<WatchlistShow[]> {
+  if (wl.mode === "space") return listSharedWatchlist(agent, did, wl.spaceUri);
+
   const items = await listAllRecords(agent, did, LIST_ITEM_COLLECTION);
   const out: WatchlistShow[] = [];
   for (const { value } of items) {
@@ -619,6 +688,61 @@ export async function listWatchlist(
   return out;
 }
 
+// The multi-writer read: sweep every member's watchlistItem records in the
+// space and merge. The caller's own repo is a plain-Bearer self-op through the
+// seam; every other writer needs a space credential. Deduped by tmdbId, keeping
+// the earliest add.
+async function listSharedWatchlist(
+  agent: Agent,
+  did: string,
+  spaceUri: string,
+): Promise<WatchlistShow[]> {
+  const dest: WriteDestination = { kind: "space", spaceUri };
+  const writers = [did, ...(await spaceMemberDids(agent, spaceUri))].filter(
+    (w, i, arr) => arr.indexOf(w) === i,
+  );
+
+  let creds: SpaceCredentialManager | null = null;
+  const byTmdb = new Map<number, WatchlistShow>();
+
+  for (const writer of writers) {
+    let records: { value: Record<string, unknown> }[];
+    if (writer === did) {
+      const res = await seamListRecords(agent, dest, {
+        repo: writer,
+        collection: WATCHLIST_ITEM_COLLECTION,
+        limit: 100,
+      });
+      records = res.records;
+    } else {
+      creds ??= await SpaceCredentialManager.create(agent, did);
+      const res = await creds.listRecords(spaceUri, writer, {
+        collection: WATCHLIST_ITEM_COLLECTION,
+        limit: 100,
+      });
+      records = res.records;
+    }
+
+    for (const { value } of records) {
+      const tmdbId = Number(value.tmdbId);
+      if (!Number.isInteger(tmdbId) || tmdbId <= 0) continue;
+      const addedAt = typeof value.addedAt === "string" ? value.addedAt : "";
+      const show: WatchlistShow = {
+        tmdbId,
+        title: typeof value.title === "string" ? value.title : `TV #${tmdbId}`,
+        posterUrl:
+          typeof value.posterUrl === "string" ? value.posterUrl : null,
+        year: typeof value.year === "string" ? value.year : null,
+        addedAt,
+      };
+      const prev = byTmdb.get(tmdbId);
+      if (!prev || (addedAt && addedAt < prev.addedAt)) byTmdb.set(tmdbId, show);
+    }
+  }
+
+  return [...byTmdb.values()].sort((a, b) => (a.addedAt < b.addedAt ? 1 : -1));
+}
+
 export interface WatchRecord {
   uri: string;
   tmdbId: string;
@@ -635,12 +759,13 @@ export async function listWatches(
   agent: Agent,
   did: string,
   limit = 50,
+  dest: WriteDestination = PUBLIC_REPO,
 ): Promise<WatchRecord[]> {
   // listRecords orders by rkey; newest first (no reverse). Imported records'
   // rkeys track import time, not watch time, so over-fetch and sort by
   // watchedAt to surface recent logs. A watchedAt-ordered index is the
   // future appview's job.
-  const res = await seamListRecords(agent, PUBLIC_REPO, {
+  const res = await seamListRecords(agent, dest, {
     repo: did,
     collection: WATCH_COLLECTION,
     limit: Math.max(limit * 2, 100),
