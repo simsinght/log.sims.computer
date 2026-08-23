@@ -1,5 +1,6 @@
 import { AtpAgent } from "@atproto/api";
 import { resolveIdentity } from "@/lib/atproto/identity";
+import { initSpacesForSession } from "@/lib/atproto/spaces";
 import { getSession } from "@/lib/session";
 
 export async function establishPasswordSession(
@@ -20,6 +21,7 @@ export async function establishPasswordSession(
   session.method = "app_password";
   session.pdsUrl = pdsUrl;
   session.atpSession = agent.session;
+  await initSpacesForSession(agent, session);
   await session.save();
 
   return { did: agent.session.did, handle: agent.session.handle };

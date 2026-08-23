@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import SpacesSection from "@/components/SpacesSection";
 
 interface Summary {
   eventsFound: number;
@@ -331,14 +332,20 @@ export default function SettingsClient({
   handle,
   did,
   sampleImportEnabled,
+  spacesCapable,
 }: {
   handle: string;
   did: string;
   sampleImportEnabled: boolean;
+  // Tri-state from the session: false = known non-capable (bsky.social), render
+  // nothing and make no space calls; true/null = capable or not-yet-probed, let
+  // the section resolve for itself.
+  spacesCapable: boolean | null;
 }) {
   return (
     <div className="mt-8 space-y-6">
       <AccountSection handle={handle} did={did} />
+      {spacesCapable !== false && <SpacesSection />}
       <ImportSection sampleEnabled={sampleImportEnabled} />
     </div>
   );

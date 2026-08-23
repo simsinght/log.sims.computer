@@ -10,6 +10,10 @@ export interface AppSession {
   method?: AuthMethod;
   pdsUrl?: string;
   atpSession?: AtpSessionData;
+  // Whether this account's PDS implements com.atproto.space.* — probed once at
+  // sign-in and cached so bsky.social accounts never re-probe. Undefined until a
+  // definitive answer is known.
+  spacesCapable?: boolean;
 }
 
 const DEV_SECRET = "dev-only-insecure-session-secret-change-me";

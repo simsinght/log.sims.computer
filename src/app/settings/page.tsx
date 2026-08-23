@@ -48,6 +48,7 @@ export default async function SettingsPage() {
           handle={handle}
           did={did}
           sampleImportEnabled={sampleImportEnabled}
+          spacesCapable={session.spacesCapable ?? null}
         />
       </div>
     </div>
