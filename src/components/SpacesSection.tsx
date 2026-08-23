@@ -181,25 +181,103 @@ function SpaceCard({
   );
 }
 
+// Shared chrome so the heading is identical across the loading, error and
+// ready states — absence of the section is reserved for accounts that are
+// definitively not spaces-capable.
+function SpacesShell({ children }: { children: React.ReactNode }) {
+  return (
+    <section className="rounded-lg border border-gray-800 bg-[#141414] p-5">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+        Spaces
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+function SpacesSkeleton() {
+  return (
+    <SpacesShell>
+      <div className="mt-5 animate-pulse space-y-3">
+        <div className="h-3.5 w-3/4 rounded bg-[#1c1c1c]" />
+        <div className="h-3.5 w-1/2 rounded bg-[#1c1c1c]" />
+      </div>
+    </SpacesShell>
+  );
+}
+
+function SpacesError({
+  message,
+  onRetry,
+  retrying,
+}: {
+  message: string | null;
+  onRetry: () => void;
+  retrying: boolean;
+}) {
+  return (
+    <SpacesShell>
+      <p className="mt-3 rounded-md border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-300">
+        {message ?? "Couldn't load your spaces. Please try again."}
+      </p>
+      <button
+        onClick={onRetry}
+        disabled={retrying}
+        className="mt-4 rounded-full border border-gray-700 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:border-gray-500 hover:text-white disabled:opacity-50"
+      >
+        {retrying ? "Retrying…" : "Retry"}
+      </button>
+    </SpacesShell>
+  );
+}
+
+type LoadState =
+  | { status: "loading" }
+  | { status: "error"; message: string | null }
+  | { status: "notCapable" }
+  | { status: "ready"; spaces: AppSpace[] };
+
 export default function SpacesSection() {
-  const [data, setData] = useState<SpacesResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [retrying, setRetrying] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/spaces");
-      if (!res.ok) {
-        // 401 (signed out) or a probe failure: render nothing rather than an error.
-        setData({ capable: false, spaces: [] });
+      // A signed-out session (401) is the one failure that renders nothing:
+      // there's no account to show spaces for and Retry can't recover it. Every
+      // other non-OK response is a real error state, not absence.
+      if (res.status === 401) {
+        setState({ status: "notCapable" });
         return;
       }
-      setData((await res.json()) as SpacesResponse);
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setState({
+          status: "error",
+          message: typeof body?.error === "string" ? body.error : null,
+        });
+        return;
+      }
+      const body = (await res.json().catch(() => null)) as SpacesResponse | null;
+      if (!body || typeof body.capable !== "boolean") {
+        setState({ status: "error", message: null });
+        return;
+      }
+      if (!body.capable) {
+        setState({ status: "notCapable" });
+        return;
+      }
+      setState({
+        status: "ready",
+        spaces: Array.isArray(body.spaces) ? body.spaces : [],
+      });
     } catch {
-      setData({ capable: false, spaces: [] });
-    } finally {
-      setLoading(false);
+      setState({ status: "error", message: null });
     }
   }, []);
 
@@ -207,9 +285,15 @@ export default function SpacesSection() {
     void load();
   }, [load]);
 
+  async function onRetry() {
+    setRetrying(true);
+    await load();
+    setRetrying(false);
+  }
+
   async function onCreateWatchlist() {
     setCreating(true);
-    setError(null);
+    setCreateError(null);
     try {
       const res = await fetch("/api/spaces", {
         method: "POST",
@@ -218,7 +302,7 @@ export default function SpacesSection() {
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(body.error ?? "Couldn't create the shared watchlist.");
+        setCreateError(body.error ?? "Couldn't create the shared watchlist.");
         return;
       }
       await load();
@@ -227,23 +311,30 @@ export default function SpacesSection() {
     }
   }
 
-  // Non-capable accounts (e.g. bsky.social) render no space UI at all.
-  if (loading || !data || !data.capable) return null;
+  if (state.status === "loading") return <SpacesSkeleton />;
+  // Only a clean, successful, explicitly not-capable response renders nothing.
+  if (state.status === "notCapable") return null;
+  if (state.status === "error") {
+    return (
+      <SpacesError
+        message={state.message}
+        onRetry={() => void onRetry()}
+        retrying={retrying}
+      />
+    );
+  }
 
-  const hasWatchlist = data.spaces.some((s) => s.kind === "watchlist");
+  const hasWatchlist = state.spaces.some((s) => s.kind === "watchlist");
 
   return (
-    <section className="rounded-lg border border-gray-800 bg-[#141414] p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-        Spaces
-      </h2>
+    <SpacesShell>
       <p className="mt-3 text-sm text-gray-400">
         Permissioned spaces on your PDS. Add friends by handle or DID to share
         access.
       </p>
 
       <div className="mt-5 space-y-4">
-        {data.spaces.map((space) => (
+        {state.spaces.map((space) => (
           <SpaceCard key={space.uri} space={space} onChanged={load} />
         ))}
       </div>
@@ -263,11 +354,11 @@ export default function SpacesSection() {
         </div>
       )}
 
-      {error && (
+      {createError && (
         <p className="mt-4 rounded-md border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-300">
-          {error}
+          {createError}
         </p>
       )}
-    </section>
+    </SpacesShell>
   );
 }
