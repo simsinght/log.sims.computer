@@ -115,8 +115,9 @@ export interface CapabilityResult {
   // implemented" or a clean success is definitive; a network/auth blip is not,
   // so we retry rather than cache a false negative.
   definitive: boolean;
-  // Set only on a non-definitive failure — the probe error, so callers can log
-  // why capability couldn't be determined.
+  // Set on any error-derived result (definitive OR non-definitive not-capable) —
+  // the probe error, so callers can log/surface why the account read as not
+  // capable. Absent only on a clean success (capable: true).
   error?: unknown;
 }
 
@@ -127,7 +128,8 @@ export async function detectSpacesCapability(
     await agent.com.atproto.space.listSpaces({ limit: 1 });
     return { capable: true, definitive: true };
   } catch (err) {
-    if (isMethodUnsupported(err)) return { capable: false, definitive: true };
+    if (isMethodUnsupported(err))
+      return { capable: false, definitive: true, error: err };
     return { capable: false, definitive: false, error: err };
   }
 }

@@ -15,19 +15,21 @@ export const runtime = "nodejs";
 
 // Resolve (and cache) whether this session's account supports spaces. A
 // bsky.social account is cached `false` at sign-in, so it never reaches a space
-// call from here.
+// call from here. `probeError` is set only when a fresh probe read the account
+// as not-capable off an error (definitive or not) — the cached path has no
+// error to report.
 async function resolveCapability(
   agent: Awaited<ReturnType<typeof getAuthedAgent>>,
-): Promise<boolean> {
+): Promise<{ capable: boolean; probeError?: unknown }> {
   const session = await getSession();
-  if (session.spacesCapable !== undefined) return session.spacesCapable;
-  if (!agent) return false;
-  const { capable, definitive } = await detectSpacesCapability(agent);
+  if (session.spacesCapable !== undefined) return { capable: session.spacesCapable };
+  if (!agent) return { capable: false };
+  const { capable, definitive, error } = await detectSpacesCapability(agent);
   if (definitive) {
     session.spacesCapable = capable;
     await session.save();
   }
-  return capable;
+  return { capable, probeError: capable ? undefined : error };
 }
 
 export async function GET() {
@@ -36,8 +38,19 @@ export async function GET() {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  if (!(await resolveCapability(agent))) {
-    return NextResponse.json({ capable: false, spaces: [] });
+  const { capable, probeError } = await resolveCapability(agent);
+  if (!capable) {
+    // Surface the probe error in the body (and log it) so a not-capable verdict
+    // that came from an actual PDS error is diagnosable from the network trace,
+    // rather than looking identical to a genuine unsupported account.
+    if (probeError !== undefined) {
+      console.error("[spaces] capability probe: not capable", {
+        did: agent.did,
+        ...errFields(probeError),
+      });
+      return NextResponse.json({ capable: false, probe: errFields(probeError) });
+    }
+    return NextResponse.json({ capable: false });
   }
 
   try {
@@ -59,7 +72,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  if (!(await resolveCapability(agent))) {
+  const { capable, probeError } = await resolveCapability(agent);
+  if (!capable) {
+    if (probeError !== undefined) {
+      console.error("[spaces] capability probe: not capable", {
+        did: agent.did,
+        ...errFields(probeError),
+      });
+    }
     return NextResponse.json(
       { error: "This account doesn't support spaces." },
       { status: 400 },
