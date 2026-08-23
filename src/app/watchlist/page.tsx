@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getAuthedAgent } from "@/lib/atproto/agent";
 import { getSession } from "@/lib/session";
+import { resolveRouting } from "@/lib/atproto/routing";
 import { listWatchlist, type WatchlistShow } from "@/lib/atproto/records";
 import WatchlistGrid from "@/components/WatchlistGrid";
 
@@ -34,7 +35,8 @@ export default async function WatchlistPage() {
 
   let shows: WatchlistShow[] = [];
   try {
-    shows = await listWatchlist(agent, agent.did);
+    const routing = await resolveRouting(agent, session);
+    shows = await listWatchlist(agent, agent.did, routing.watchlist);
   } catch {
     shows = [];
   }

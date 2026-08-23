@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthedAgent } from "@/lib/atproto/agent";
+import { getSession } from "@/lib/session";
+import { resolveRouting } from "@/lib/atproto/routing";
 import { createWatch, upsertListItem } from "@/lib/atproto/records";
 
 export const runtime = "nodejs";
@@ -92,6 +94,10 @@ export async function POST(request: NextRequest) {
   const episode = optionalInt(body.episode);
 
   try {
+    // Shelf listItem stays on the public repo; only the diary watch record
+    // follows the routing (diary space for spike accounts).
+    const routing = await resolveRouting(agent, await getSession());
+
     const subject = await upsertListItem(agent, did, {
       tmdbId,
       mediaType,
@@ -101,17 +107,22 @@ export async function POST(request: NextRequest) {
       episode,
     });
 
-    const watch = await createWatch(agent, did, {
-      subject,
-      tmdbId,
-      mediaType,
-      watchedAt,
-      rewatch,
-      season,
-      episode,
-      tags,
-      note,
-    });
+    const watch = await createWatch(
+      agent,
+      did,
+      {
+        subject,
+        tmdbId,
+        mediaType,
+        watchedAt,
+        rewatch,
+        season,
+        episode,
+        tags,
+        note,
+      },
+      routing.diary,
+    );
 
     return NextResponse.json({
       listItemUri: subject.uri,

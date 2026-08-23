@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthedAgent } from "@/lib/atproto/agent";
+import { getSession } from "@/lib/session";
+import { resolveRouting } from "@/lib/atproto/routing";
 import { addToWatchlist, removeFromWatchlist } from "@/lib/atproto/records";
 
 export const runtime = "nodejs";
@@ -33,7 +35,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const ref = await addToWatchlist(agent, agent.did, { tmdbId, title });
+    const routing = await resolveRouting(agent, await getSession());
+    const ref = await addToWatchlist(
+      agent,
+      agent.did,
+      { tmdbId, title },
+      routing.watchlist,
+    );
     return NextResponse.json({ listItemUri: ref.uri });
   } catch (err) {
     const message = err instanceof Error ? err.message : "PDS write failed";
@@ -53,7 +61,13 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    const removed = await removeFromWatchlist(agent, agent.did, tmdbId);
+    const routing = await resolveRouting(agent, await getSession());
+    const removed = await removeFromWatchlist(
+      agent,
+      agent.did,
+      tmdbId,
+      routing.watchlist,
+    );
     return NextResponse.json({ removed });
   } catch (err) {
     const message = err instanceof Error ? err.message : "PDS write failed";

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthedAgent } from "@/lib/atproto/agent";
+import { getSession } from "@/lib/session";
+import { resolveRouting } from "@/lib/atproto/routing";
 import { buildDiary } from "@/lib/diary";
 
 export const runtime = "nodejs";
@@ -12,7 +14,8 @@ export async function GET() {
   }
 
   try {
-    const days = await buildDiary(agent, agent.did);
+    const routing = await resolveRouting(agent, await getSession());
+    const days = await buildDiary(agent, agent.did, 50, routing.diary);
     return NextResponse.json({ days });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load diary";

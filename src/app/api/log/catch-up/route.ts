@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthedAgent } from "@/lib/atproto/agent";
+import { getSession } from "@/lib/session";
+import { resolveRouting } from "@/lib/atproto/routing";
 import {
   createWatches,
   getShowListItem,
@@ -180,7 +182,8 @@ export async function POST(request: NextRequest) {
       episode: c.episode,
     }));
 
-    const added = await createWatches(agent, did, inputs);
+    const routing = await resolveRouting(agent, await getSession());
+    const added = await createWatches(agent, did, inputs, routing.diary);
     return NextResponse.json({ added, first, last });
   } catch (err) {
     const message = err instanceof Error ? err.message : "PDS write failed";

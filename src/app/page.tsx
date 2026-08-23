@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getAuthedAgent } from "@/lib/atproto/agent";
 import { getSession } from "@/lib/session";
+import { resolveRouting } from "@/lib/atproto/routing";
 import { getWatching, type WatchingResult } from "@/lib/watching";
 import Watching from "@/components/Watching";
 
@@ -30,7 +31,8 @@ export default async function Home() {
 
   let watching: WatchingResult = { shows: [], inProgressCount: 0 };
   try {
-    watching = await getWatching(agent, agent.did);
+    const routing = await resolveRouting(agent, session);
+    watching = await getWatching(agent, agent.did, routing.diary);
   } catch {
     watching = { shows: [], inProgressCount: 0 };
   }
