@@ -21,6 +21,9 @@ export async function establishPasswordSession(
   session.method = "app_password";
   session.pdsUrl = pdsUrl;
   session.atpSession = agent.session;
+  // Drop any capability cached under a previous identity on this cookie before
+  // re-probing, so a stale flag can never cross accounts.
+  session.spacesCapable = undefined;
   await initSpacesForSession(agent, session);
   await session.save();
 

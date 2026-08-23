@@ -10,6 +10,20 @@ function loginError(code: string): NextResponse {
   });
 }
 
+// Classify the identifier without logging the raw value (a handle/DID/PDS URL
+// can be privacy-relevant). For a URL we keep only the host.
+function identifierShape(identifier: string): { shape: string; host?: string } {
+  if (identifier.startsWith("did:")) return { shape: "did" };
+  if (/^https?:\/\//i.test(identifier)) {
+    try {
+      return { shape: "url", host: new URL(identifier).host };
+    } catch {
+      return { shape: "url" };
+    }
+  }
+  return { shape: "handle" };
+}
+
 // Accepts a handle (you.bsky.social / sim.pds.sims.computer), a DID
 // (did:plc:… / did:web:…), or a PDS/entryway URL (https://pds.sims.computer).
 // The oauth client's authorize() resolves all three shapes itself.
@@ -18,13 +32,21 @@ async function startLogin(identifier: string | null) {
     return loginError("missing");
   }
 
+  const value = identifier.trim();
   try {
     const client = await getOAuthClient();
-    const url = await client.authorize(identifier.trim(), {
+    const url = await client.authorize(value, {
       state: crypto.randomUUID(),
     });
     return NextResponse.redirect(url, { status: 302 });
-  } catch {
+  } catch (err) {
+    const e = err as { status?: number; error?: string; message?: string };
+    console.error("[login] authorize failed", {
+      ...identifierShape(value),
+      status: e?.status,
+      error: e?.error,
+      message: e?.message,
+    });
     return loginError("resolve");
   }
 }
