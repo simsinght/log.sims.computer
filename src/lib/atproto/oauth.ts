@@ -15,7 +15,7 @@ export function clientMetadata(baseUrl: string = BASE_URL) {
   const base = baseUrl.replace(/\/$/, "");
   return {
     client_id: `${base}/api/auth/client-metadata.json`,
-    client_name: "log.sims.computer",
+    client_name: "tvlog",
     client_uri: base,
     redirect_uris: [`${base}/api/auth/callback`] as [string, ...string[]],
     scope: OAUTH_SCOPE,
