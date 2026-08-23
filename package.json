@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@atproto/api": "^0.20.33",
+    "@atproto/api": "0.0.0-spaces-alpha-20260818163953",
+    "@atproto/xrpc": "0.0.0-spaces-alpha-20260818163953",
     "@atproto/oauth-client-node": "^0.4.9",
     "iron-session": "^8.0.4",
     "next": "^15.1.6",
