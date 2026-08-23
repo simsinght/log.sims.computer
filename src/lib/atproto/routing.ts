@@ -12,6 +12,7 @@ import type { AppSession } from "@/lib/session";
 import { PUBLIC_REPO, type WriteDestination } from "@/lib/atproto/write";
 import {
   diarySpaceUri,
+  errFields,
   watchlistSpaceExists,
   watchlistSpaceUri,
 } from "@/lib/atproto/spaces";
@@ -58,7 +59,11 @@ export async function resolveRouting(
     if (await watchlistSpaceExists(agent, ownerDid)) {
       watchlist = { mode: "space", spaceUri: watchlistSpaceUri(ownerDid) };
     }
-  } catch {
+  } catch (err) {
+    console.error("[spaces] watchlist existence probe failed; routing public", {
+      did: ownerDid,
+      ...errFields(err),
+    });
     watchlist = { mode: "public" };
   }
 

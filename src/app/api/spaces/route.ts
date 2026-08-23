@@ -5,6 +5,7 @@ import {
   addSpaceMember,
   createWatchlistSpace,
   detectSpacesCapability,
+  errFields,
   getAppSpaces,
   isOwnedBy,
   removeSpaceMember,
@@ -43,6 +44,10 @@ export async function GET() {
     const spaces = await getAppSpaces(agent, agent.did);
     return NextResponse.json({ capable: true, spaces });
   } catch (err) {
+    console.error("[spaces] getAppSpaces failed", {
+      did: agent.did,
+      ...errFields(err),
+    });
     const message = err instanceof Error ? err.message : "Failed to load spaces";
     return NextResponse.json({ error: message }, { status: 502 });
   }
@@ -102,6 +107,11 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (err) {
+    console.error("[spaces] mutation failed", {
+      did: agent.did,
+      action,
+      ...errFields(err),
+    });
     const message = err instanceof Error ? err.message : "Space update failed";
     return NextResponse.json({ error: message }, { status: 502 });
   }

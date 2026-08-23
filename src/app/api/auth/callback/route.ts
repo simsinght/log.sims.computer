@@ -27,11 +27,20 @@ export async function GET(request: NextRequest) {
     session.did = did;
     session.handle = handle ?? did;
     session.method = "oauth";
+    // Drop any capability cached under a previous identity on this cookie before
+    // re-probing, so a stale flag can never cross accounts.
+    session.spacesCapable = undefined;
     await initSpacesForSession(new Agent(oauthSession), session);
     await session.save();
 
     return NextResponse.redirect(new URL("/", BASE_URL), { status: 302 });
-  } catch {
+  } catch (err) {
+    const e = err as { status?: number; error?: string; message?: string };
+    console.error("[callback] oauth callback failed", {
+      status: e?.status,
+      error: e?.error,
+      message: e?.message,
+    });
     return NextResponse.redirect(new URL("/login?error=oauth", BASE_URL), {
       status: 302,
     });

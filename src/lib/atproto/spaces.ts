@@ -74,6 +74,17 @@ function errText(err: unknown): { status?: number; text: string } {
   };
 }
 
+// Structured fields for logging a caught error — status/error/message only, no
+// request/response bodies or tokens.
+export function errFields(err: unknown): {
+  status?: number;
+  error?: string;
+  message?: string;
+} {
+  const e = err as Xrpcish;
+  return { status: e?.status, error: e?.error, message: e?.message };
+}
+
 function isMethodUnsupported(err: unknown): boolean {
   const { status, text } = errText(err);
   if (status === 404 || status === 501) return true;
@@ -104,6 +115,9 @@ export interface CapabilityResult {
   // implemented" or a clean success is definitive; a network/auth blip is not,
   // so we retry rather than cache a false negative.
   definitive: boolean;
+  // Set only on a non-definitive failure — the probe error, so callers can log
+  // why capability couldn't be determined.
+  error?: unknown;
 }
 
 export async function detectSpacesCapability(
@@ -114,7 +128,7 @@ export async function detectSpacesCapability(
     return { capable: true, definitive: true };
   } catch (err) {
     if (isMethodUnsupported(err)) return { capable: false, definitive: true };
-    return { capable: false, definitive: false };
+    return { capable: false, definitive: false, error: err };
   }
 }
 
@@ -336,18 +350,35 @@ export async function initSpacesForSession(
   agent: Agent,
   session: AppSession,
 ): Promise<void> {
+  const did = agent.did;
   try {
-    const { capable, definitive } = await detectSpacesCapability(agent);
-    if (definitive) session.spacesCapable = capable;
-    if (capable && agent.did) {
+    const { capable, definitive, error } = await detectSpacesCapability(agent);
+    if (definitive) {
+      session.spacesCapable = capable;
+      console.info(`[spaces] capability: ${capable} (definitive)`, { did });
+    } else {
+      console.error("[spaces] capability probe failed", {
+        did,
+        ...errFields(error),
+      });
+    }
+    if (capable && did) {
       try {
-        await ensureDiarySpace(agent, agent.did);
-      } catch {
+        await ensureDiarySpace(agent, did);
+      } catch (err) {
         // Diary is re-ensured lazily on first /api/spaces load; a transient
         // failure here shouldn't block sign-in.
+        console.error("[spaces] ensureDiarySpace failed", {
+          did,
+          ...errFields(err),
+        });
       }
     }
-  } catch {
+  } catch (err) {
     // never break sign-in
+    console.error("[spaces] initSpacesForSession failed", {
+      did,
+      ...errFields(err),
+    });
   }
 }
