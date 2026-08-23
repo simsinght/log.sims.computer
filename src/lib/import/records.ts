@@ -7,6 +7,11 @@
 import type { Agent } from "@atproto/api";
 import type { MediaType, WorkGroup, WatchedEpisode, PlayEvent } from "./parse.ts";
 import type { WorkDetail } from "./tmdb.ts";
+import {
+  PUBLIC_REPO,
+  createRecord as writeCreate,
+  listRecords as seamListRecords,
+} from "../atproto/write.ts";
 
 export const LIST_COLLECTION = "social.popfeed.feed.list";
 export const LIST_ITEM_COLLECTION = "social.popfeed.feed.listItem";
@@ -52,21 +57,21 @@ export async function listAllRecords(
   const out: RepoRecord[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < 500; page++) {
-    const res = await agent.com.atproto.repo.listRecords({
+    const res = await seamListRecords(agent, PUBLIC_REPO, {
       repo: did,
       collection,
       limit: 100,
       cursor,
     });
-    for (const r of res.data.records) {
+    for (const r of res.records) {
       out.push({
         uri: r.uri,
         cid: r.cid,
-        value: r.value as Record<string, unknown>,
+        value: r.value,
       });
     }
-    cursor = res.data.cursor;
-    if (!cursor || res.data.records.length === 0) break;
+    cursor = res.cursor;
+    if (!cursor || res.records.length === 0) break;
   }
   return out;
 }
@@ -127,7 +132,7 @@ export async function ensureList(
     return existing.uri;
   }
   const created = await withRateLimit(() =>
-    agent.com.atproto.repo.createRecord({
+    writeCreate(agent, PUBLIC_REPO, {
       repo: did,
       collection: LIST_COLLECTION,
       record: {
@@ -141,9 +146,9 @@ export async function ensureList(
       validate: false,
     }),
   );
-  existingLists.push({ uri: created.data.uri, cid: created.data.cid, value: {} });
-  cache.set(listType, created.data.uri);
-  return created.data.uri;
+  existingLists.push({ uri: created.uri, cid: created.cid, value: {} });
+  cache.set(listType, created.uri);
+  return created.uri;
 }
 
 export function buildListItemValue(

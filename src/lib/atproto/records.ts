@@ -5,6 +5,14 @@ import {
   fetchPosterJpeg,
   type WorkDetail,
 } from "@/lib/tmdb";
+import {
+  PUBLIC_REPO,
+  createRecord as writeCreate,
+  putRecord as writePut,
+  deleteRecord as writeDelete,
+  applyWritesCreate,
+  listRecords as seamListRecords,
+} from "@/lib/atproto/write";
 
 export const LIST_COLLECTION = "social.popfeed.feed.list";
 export const LIST_ITEM_COLLECTION = "social.popfeed.feed.listItem";
@@ -72,21 +80,21 @@ export async function listAllRecords(
   const out: { uri: string; cid: string; value: Record<string, unknown> }[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < maxPages; page++) {
-    const res = await agent.com.atproto.repo.listRecords({
+    const res = await seamListRecords(agent, PUBLIC_REPO, {
       repo: did,
       collection,
       limit: 100,
       cursor,
     });
-    for (const r of res.data.records) {
+    for (const r of res.records) {
       out.push({
         uri: r.uri,
         cid: r.cid,
-        value: r.value as Record<string, unknown>,
+        value: r.value,
       });
     }
-    cursor = res.data.cursor;
-    if (!cursor || res.data.records.length === 0) break;
+    cursor = res.cursor;
+    if (!cursor || res.records.length === 0) break;
   }
   return out;
 }
@@ -107,7 +115,7 @@ export async function ensureList(
     return existing.uri;
   }
 
-  const created = await agent.com.atproto.repo.createRecord({
+  const created = await writeCreate(agent, PUBLIC_REPO, {
     repo: did,
     collection: LIST_COLLECTION,
     record: {
@@ -120,8 +128,8 @@ export async function ensureList(
     },
     validate: false,
   });
-  listUriCache.set(cacheKey, created.data.uri);
-  return created.data.uri;
+  listUriCache.set(cacheKey, created.uri);
+  return created.uri;
 }
 
 function matchesWork(
@@ -344,23 +352,23 @@ export async function upsertListItem(
 
   if (existing) {
     const rkey = existing.uri.split("/").pop() as string;
-    const put = await agent.com.atproto.repo.putRecord({
+    const put = await writePut(agent, PUBLIC_REPO, {
       repo: did,
       collection: LIST_ITEM_COLLECTION,
       rkey,
       record: value,
       validate: false,
     });
-    return { uri: put.data.uri, cid: put.data.cid };
+    return { uri: put.uri, cid: put.cid };
   }
 
-  const created = await agent.com.atproto.repo.createRecord({
+  const created = await writeCreate(agent, PUBLIC_REPO, {
     repo: did,
     collection: LIST_ITEM_COLLECTION,
     record: value,
     validate: false,
   });
-  return { uri: created.data.uri, cid: created.data.cid };
+  return { uri: created.uri, cid: created.cid };
 }
 
 export interface CreateWatchInput {
@@ -393,13 +401,13 @@ export async function createWatch(
   if (input.tags && input.tags.length > 0) record.tags = input.tags;
   if (input.note) record.note = input.note;
 
-  const created = await agent.com.atproto.repo.createRecord({
+  const created = await writeCreate(agent, PUBLIC_REPO, {
     repo: did,
     collection: WATCH_COLLECTION,
     record,
     validate: false,
   });
-  return { uri: created.data.uri, cid: created.data.cid };
+  return { uri: created.uri, cid: created.cid };
 }
 
 // Bulk sibling of createWatch: one applyWrites request per WRITE_BATCH records,
@@ -426,7 +434,6 @@ export async function createWatches(
     if (input.season !== undefined) value.season = input.season;
     if (input.episode !== undefined) value.episode = input.episode;
     return {
-      $type: "com.atproto.repo.applyWrites#create",
       collection: WATCH_COLLECTION,
       value,
     };
@@ -436,10 +443,10 @@ export async function createWatches(
   for (let i = 0; i < writes.length; i += WRITE_BATCH) {
     const batch = writes.slice(i, i + WRITE_BATCH);
     try {
-      await agent.com.atproto.repo.applyWrites({
+      await applyWritesCreate(agent, PUBLIC_REPO, {
         repo: did,
         validate: false,
-        writes: batch as never,
+        creates: batch,
       });
     } catch (err) {
       const detail = err instanceof Error ? err.message : "unknown error";
@@ -541,13 +548,13 @@ export async function addToWatchlist(
     listType: "tv_show_watchlist",
     addedAt: new Date().toISOString(),
   };
-  const created = await agent.com.atproto.repo.createRecord({
+  const created = await writeCreate(agent, PUBLIC_REPO, {
     repo: did,
     collection: LIST_ITEM_COLLECTION,
     record: value,
     validate: false,
   });
-  return { uri: created.data.uri, cid: created.data.cid };
+  return { uri: created.uri, cid: created.cid };
 }
 
 // Deletes the watchlist listItem for a show. Returns false when the show isn't
@@ -566,7 +573,7 @@ export async function removeFromWatchlist(
   );
   if (!existing) return false;
   const rkey = existing.uri.split("/").pop() as string;
-  await agent.com.atproto.repo.deleteRecord({
+  await writeDelete(agent, PUBLIC_REPO, {
     repo: did,
     collection: LIST_ITEM_COLLECTION,
     rkey,
@@ -633,14 +640,14 @@ export async function listWatches(
   // rkeys track import time, not watch time, so over-fetch and sort by
   // watchedAt to surface recent logs. A watchedAt-ordered index is the
   // future appview's job.
-  const res = await agent.com.atproto.repo.listRecords({
+  const res = await seamListRecords(agent, PUBLIC_REPO, {
     repo: did,
     collection: WATCH_COLLECTION,
     limit: Math.max(limit * 2, 100),
   });
-  return res.data.records
+  return res.records
     .map((r) => {
-      const v = r.value as Record<string, unknown>;
+      const v = r.value;
       return {
         uri: r.uri,
         tmdbId: String(v.tmdbId ?? ""),
