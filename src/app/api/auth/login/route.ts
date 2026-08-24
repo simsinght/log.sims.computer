@@ -8,7 +8,10 @@ export const runtime = "nodejs";
 // PDS hosts known to speak com.atproto.space.* — always routed to the spaces
 // client regardless of the probe. bsky.social is deliberately absent, so its
 // logins keep the legacy client and its transition:generic scope untouched.
-const SPACES_HOSTS = new Set(["pds.sims.computer"]);
+const SPACES_HOSTS = new Set([
+  "pds.sims.computer",
+  "spaces-alpha.host.bsky.network",
+]);
 
 // Best-effort, unauthenticated capability probe used as a secondary signal
 // alongside the host allowlist. A PDS that implements the method answers an
