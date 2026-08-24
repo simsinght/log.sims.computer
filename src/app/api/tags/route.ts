@@ -7,8 +7,9 @@ import { listWatches } from "@/lib/atproto/records";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Cap the scan: the tag vocabulary only needs recent history, not a full sweep.
-const TAG_SCAN_LIMIT = 200;
+// Cap the scan: the tag vocabulary only needs recent history, not a full
+// sweep — and the underlying listRecords page ceiling is 100 anyway.
+const TAG_SCAN_LIMIT = 100;
 
 export async function GET() {
   const agent = await getAuthedAgent();

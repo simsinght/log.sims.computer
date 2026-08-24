@@ -768,7 +768,9 @@ export async function listWatches(
   const res = await seamListRecords(agent, dest, {
     repo: did,
     collection: WATCH_COLLECTION,
-    limit: Math.max(limit * 2, 100),
+    // listRecords caps limit at 100; over-fetch up to that ceiling (callers
+    // asking for more get at most 100 candidates before the sort/slice).
+    limit: Math.min(Math.max(limit * 2, 100), 100),
   });
   return res.records
     .map((r) => {
