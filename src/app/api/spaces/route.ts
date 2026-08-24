@@ -22,6 +22,7 @@ export const runtime = "nodejs";
 // the cached path and the capable cases have no error to report.
 async function resolveCapability(
   agent: Awaited<ReturnType<typeof getAuthedAgent>>,
+  ownerDid: string,
 ): Promise<{ capable: boolean; unauthorized: boolean; probeError?: unknown }> {
   const session = await getSession();
   if (session.spacesCapable !== undefined) {
@@ -32,7 +33,7 @@ async function resolveCapability(
   }
   if (!agent) return { capable: false, unauthorized: false };
   const { capable, definitive, unauthorized, error } =
-    await detectSpacesCapability(agent);
+    await detectSpacesCapability(agent, ownerDid);
   if (definitive) {
     session.spacesCapable = capable;
     session.spacesUnauthorized = unauthorized ?? false;
@@ -51,7 +52,10 @@ export async function GET() {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { capable, unauthorized, probeError } = await resolveCapability(agent);
+  const { capable, unauthorized, probeError } = await resolveCapability(
+    agent,
+    agent.did,
+  );
   if (!capable) {
     // Surface the probe error in the body (and log it) so a not-capable verdict
     // that came from an actual PDS error is diagnosable from the network trace,
@@ -90,7 +94,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { capable, unauthorized, probeError } = await resolveCapability(agent);
+  const { capable, unauthorized, probeError } = await resolveCapability(
+    agent,
+    agent.did,
+  );
   if (!capable) {
     if (probeError !== undefined) {
       console.error("[spaces] capability probe: not capable", {

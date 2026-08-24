@@ -137,30 +137,49 @@ export interface CapabilityResult {
   error?: unknown;
 }
 
-// The listSpaces probe resolves capability into one of three definitive states
-// plus an indefinite one:
-//   - success            -> capable
-//   - scope/403 error    -> capable, but unauthorized (token lacks space scope)
-//   - method-unsupported -> not capable (e.g. bsky.social)
-//   - anything else      -> unknown (network/auth blip); don't cache, retry
+// Text-only "space not found" matcher for the capability probe. Deliberately
+// has NO status-404 shortcut (unlike isSpaceMissing): getSpace on a non-spaces
+// PDS returns 404 for the *unknown method* — which method-unsupported must claim
+// first — and the live sandbox returns 400 + error 'SpaceNotFound' for a
+// genuinely missing space, so status tells us nothing here; only the text does.
+function isSpaceNotFoundText(err: unknown): boolean {
+  return /spacenotfound|reponotfound/.test(errText(err).text);
+}
+
+// Probe capability via getSpace on the account's OWN diary space. getSpace
+// asserts the exact (type, authority, skey) tuple our diary grant covers,
+// whereas listSpaces asserts a wildcard skey the skey-specific grant can't
+// satisfy (a correctly-scoped token would read as unauthorized). Resolves to one
+// of four definitive states plus an indefinite one:
+//   - success (space exists)  -> capable
+//   - scope/403 error         -> capable, but unauthorized (token lacks scope)
+//   - method-unsupported       -> not capable (e.g. bsky.social)
+//   - space-not-found (text)   -> capable (PDS understood; space not ensured yet)
+//   - anything else            -> unknown (network/auth blip); don't cache, retry
 export async function detectSpacesCapability(
   agent: Agent,
+  ownerDid: string,
 ): Promise<CapabilityResult> {
   try {
-    // Probe with a type filter: an unfiltered listSpaces asserts a wildcard
-    // space:* grant, but the app's permission set deliberately grants only its
-    // own space types — asking within that footprint keeps a correctly-scoped
-    // token from reading as unauthorized.
-    await agent.com.atproto.space.listSpaces({
-      limit: 1,
-      type: DIARY_SPACE.type,
+    await agent.com.atproto.simplespace.getSpace({
+      space: diarySpaceUri(ownerDid),
     });
     return { capable: true, definitive: true };
   } catch (err) {
+    // Order is load-bearing:
+    // 1. A scope rejection means the PDS enforces space scope -> capable, but
+    //    this token isn't authorized for it.
     if (isScopeError(err))
       return { capable: true, definitive: true, unauthorized: true };
+    // 2. Method-unsupported MUST precede the space-not-found check: a non-spaces
+    //    PDS answers 404 for the unknown getSpace method, which a status-based
+    //    "space missing" test would misread as capable-but-empty.
     if (isMethodUnsupported(err))
       return { capable: false, definitive: true, error: err };
+    // 3. The PDS understood the request; the diary space just doesn't exist yet
+    //    (normal before the first ensure). Text-only match — see above.
+    if (isSpaceNotFoundText(err)) return { capable: true, definitive: true };
+    // 4. Unknown failure (network/auth blip): don't cache, retry later.
     return { capable: false, definitive: false, error: err };
   }
 }
@@ -384,9 +403,11 @@ export async function initSpacesForSession(
   session: AppSession,
 ): Promise<void> {
   const did = agent.did;
+  // The probe targets the account's own diary space URI, so it needs the DID.
+  if (!did) return;
   try {
     const { capable, definitive, unauthorized, error } =
-      await detectSpacesCapability(agent);
+      await detectSpacesCapability(agent, did);
     if (definitive) {
       session.spacesCapable = capable;
       session.spacesUnauthorized = unauthorized ?? false;
@@ -402,7 +423,7 @@ export async function initSpacesForSession(
     }
     // Only ensure the diary space when the token can actually reach spaces. An
     // unauthorized (scope-missing) token would just 403 here.
-    if (capable && !unauthorized && did) {
+    if (capable && !unauthorized) {
       try {
         await ensureDiarySpace(agent, did);
       } catch (err) {
