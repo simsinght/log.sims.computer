@@ -13,23 +13,36 @@ import {
 
 export const runtime = "nodejs";
 
-// Resolve (and cache) whether this session's account supports spaces. A
-// bsky.social account is cached `false` at sign-in, so it never reaches a space
-// call from here. `probeError` is set only when a fresh probe read the account
-// as not-capable off an error (definitive or not) — the cached path has no
-// error to report.
+// Resolve (and cache) whether this session's account supports spaces, and
+// whether this token is authorized for them. A bsky.social account is cached
+// `{capable:false}` at sign-in, so it never reaches a space call from here; a
+// spaces PDS with a stale transition:generic token resolves capable-but-
+// unauthorized so the UI can prompt a re-login. `probeError` is set only when a
+// fresh probe read the account as not-capable off an error (definitive or not) —
+// the cached path and the capable cases have no error to report.
 async function resolveCapability(
   agent: Awaited<ReturnType<typeof getAuthedAgent>>,
-): Promise<{ capable: boolean; probeError?: unknown }> {
+): Promise<{ capable: boolean; unauthorized: boolean; probeError?: unknown }> {
   const session = await getSession();
-  if (session.spacesCapable !== undefined) return { capable: session.spacesCapable };
-  if (!agent) return { capable: false };
-  const { capable, definitive, error } = await detectSpacesCapability(agent);
+  if (session.spacesCapable !== undefined) {
+    return {
+      capable: session.spacesCapable,
+      unauthorized: session.spacesUnauthorized ?? false,
+    };
+  }
+  if (!agent) return { capable: false, unauthorized: false };
+  const { capable, definitive, unauthorized, error } =
+    await detectSpacesCapability(agent);
   if (definitive) {
     session.spacesCapable = capable;
+    session.spacesUnauthorized = unauthorized ?? false;
     await session.save();
   }
-  return { capable, probeError: capable ? undefined : error };
+  return {
+    capable,
+    unauthorized: unauthorized ?? false,
+    probeError: capable ? undefined : error,
+  };
 }
 
 export async function GET() {
@@ -38,7 +51,7 @@ export async function GET() {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { capable, probeError } = await resolveCapability(agent);
+  const { capable, unauthorized, probeError } = await resolveCapability(agent);
   if (!capable) {
     // Surface the probe error in the body (and log it) so a not-capable verdict
     // that came from an actual PDS error is diagnosable from the network trace,
@@ -51,6 +64,11 @@ export async function GET() {
       return NextResponse.json({ capable: false, probe: errFields(probeError) });
     }
     return NextResponse.json({ capable: false });
+  }
+  // Capable PDS, but the token lacks the space scope: surface a re-auth prompt
+  // rather than calling getAppSpaces (which would 403).
+  if (unauthorized) {
+    return NextResponse.json({ capable: true, needsReauth: true, spaces: [] });
   }
 
   try {
@@ -72,7 +90,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { capable, probeError } = await resolveCapability(agent);
+  const { capable, unauthorized, probeError } = await resolveCapability(agent);
   if (!capable) {
     if (probeError !== undefined) {
       console.error("[spaces] capability probe: not capable", {
@@ -83,6 +101,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "This account doesn't support spaces." },
       { status: 400 },
+    );
+  }
+  if (unauthorized) {
+    return NextResponse.json(
+      {
+        error:
+          "tvlog needs updated permissions for spaces. Sign out and back in to continue.",
+        needsReauth: true,
+      },
+      { status: 403 },
     );
   }
 

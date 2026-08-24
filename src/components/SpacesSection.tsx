@@ -17,6 +17,9 @@ interface AppSpace {
 
 interface SpacesResponse {
   capable: boolean;
+  // Set when the PDS supports spaces but the current token lacks the space
+  // scope — the user needs to sign out and back in through the spaces client.
+  needsReauth?: boolean;
   spaces: AppSpace[];
 }
 
@@ -235,6 +238,7 @@ type LoadState =
   | { status: "loading" }
   | { status: "error"; message: string | null }
   | { status: "notCapable" }
+  | { status: "needsReauth" }
   | { status: "ready"; spaces: AppSpace[] };
 
 export default function SpacesSection() {
@@ -272,6 +276,12 @@ export default function SpacesSection() {
         setState({ status: "notCapable" });
         return;
       }
+      // Capable but the token lacks the space scope: a distinct state from
+      // error, checked before "ready" so the re-auth notice wins.
+      if (body.needsReauth) {
+        setState({ status: "needsReauth" });
+        return;
+      }
       setState({
         status: "ready",
         spaces: Array.isArray(body.spaces) ? body.spaces : [],
@@ -289,6 +299,11 @@ export default function SpacesSection() {
     setRetrying(true);
     await load();
     setRetrying(false);
+  }
+
+  async function onReauth() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
   }
 
   async function onCreateWatchlist() {
@@ -314,6 +329,26 @@ export default function SpacesSection() {
   if (state.status === "loading") return <SpacesSkeleton />;
   // Only a clean, successful, explicitly not-capable response renders nothing.
   if (state.status === "notCapable") return null;
+  // Capable PDS, but the signed-in token predates the spaces scope: prompt a
+  // re-login rather than showing space controls that would all fail. This is a
+  // distinct state from the generic error above it — needsReauth takes
+  // precedence and renders an amber notice with a sign-out button, not Retry.
+  if (state.status === "needsReauth") {
+    return (
+      <SpacesShell>
+        <p className="mt-3 rounded-md border border-amber-900/60 bg-amber-950/40 px-3 py-2 text-sm text-amber-200">
+          tvlog needs updated permissions to use spaces on this account. Sign out
+          and back in to grant them.
+        </p>
+        <button
+          onClick={() => void onReauth()}
+          className="mt-4 rounded-full border border-gray-700 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:border-gray-500 hover:text-white"
+        >
+          Sign out
+        </button>
+      </SpacesShell>
+    );
+  }
   if (state.status === "error") {
     return (
       <SpacesError

@@ -93,6 +93,18 @@ function isMethodUnsupported(err: unknown): boolean {
   );
 }
 
+// A scope/permission rejection means the PDS knows the method and is enforcing
+// its scope — i.e. it *does* support spaces, this token just isn't authorized
+// for them (a transition:generic token on a spaces PDS). Distinguished from
+// method-unsupported so the UI can prompt a re-login rather than hiding spaces.
+function isScopeError(err: unknown): boolean {
+  const { status, text } = errText(err);
+  if (status === 403) return true;
+  return /scopemissing|missing required scope|insufficient_?scope|invalid_scope|not permitted for this scope/.test(
+    text,
+  );
+}
+
 // A space the caller can't see (non-member) reports RepoNotFound, not Forbidden,
 // so both "does not exist" and "no access" collapse to the same signal.
 function isSpaceMissing(err: unknown): boolean {
@@ -112,15 +124,25 @@ function isSpaceAlreadyExists(err: unknown): boolean {
 export interface CapabilityResult {
   capable: boolean;
   // Whether the answer is trustworthy enough to cache. A clear "not
-  // implemented" or a clean success is definitive; a network/auth blip is not,
-  // so we retry rather than cache a false negative.
+  // implemented", a scope rejection, or a clean success is definitive; a
+  // network/auth blip is not, so we retry rather than cache a false negative.
   definitive: boolean;
-  // Set on any error-derived result (definitive OR non-definitive not-capable) —
+  // Set when the PDS supports spaces but this token isn't authorized for them
+  // (a scope rejection). `capable` is still true — the account can reach spaces
+  // once it re-authorizes through the spaces OAuth client.
+  unauthorized?: boolean;
+  // Set on any error-derived not-capable result (definitive OR non-definitive) —
   // the probe error, so callers can log/surface why the account read as not
-  // capable. Absent only on a clean success (capable: true).
+  // capable. Absent on a clean success and on the capable-but-unauthorized case.
   error?: unknown;
 }
 
+// The listSpaces probe resolves capability into one of three definitive states
+// plus an indefinite one:
+//   - success            -> capable
+//   - scope/403 error    -> capable, but unauthorized (token lacks space scope)
+//   - method-unsupported -> not capable (e.g. bsky.social)
+//   - anything else      -> unknown (network/auth blip); don't cache, retry
 export async function detectSpacesCapability(
   agent: Agent,
 ): Promise<CapabilityResult> {
@@ -128,6 +150,8 @@ export async function detectSpacesCapability(
     await agent.com.atproto.space.listSpaces({ limit: 1 });
     return { capable: true, definitive: true };
   } catch (err) {
+    if (isScopeError(err))
+      return { capable: true, definitive: true, unauthorized: true };
     if (isMethodUnsupported(err))
       return { capable: false, definitive: true, error: err };
     return { capable: false, definitive: false, error: err };
@@ -354,17 +378,24 @@ export async function initSpacesForSession(
 ): Promise<void> {
   const did = agent.did;
   try {
-    const { capable, definitive, error } = await detectSpacesCapability(agent);
+    const { capable, definitive, unauthorized, error } =
+      await detectSpacesCapability(agent);
     if (definitive) {
       session.spacesCapable = capable;
-      console.info(`[spaces] capability: ${capable} (definitive)`, { did });
+      session.spacesUnauthorized = unauthorized ?? false;
+      console.info(
+        `[spaces] capability: ${capable}${unauthorized ? " (unauthorized)" : ""} (definitive)`,
+        { did },
+      );
     } else {
       console.error("[spaces] capability probe failed", {
         did,
         ...errFields(error),
       });
     }
-    if (capable && did) {
+    // Only ensure the diary space when the token can actually reach spaces. An
+    // unauthorized (scope-missing) token would just 403 here.
+    if (capable && !unauthorized && did) {
       try {
         await ensureDiarySpace(agent, did);
       } catch (err) {
