@@ -9,9 +9,18 @@
 Navigate to `/api/auth/test-login`. If test credentials are configured in this environment (they are in preview), this establishes a session as a dedicated test account and redirects to `/`. Confirm success: a **sticky app header** appears across the top of the page — the **"tvlog" wordmark** on the far left, and a single **round profile icon** on the far right (there is **no "Watchlist" pill** — Watchlist lives inside the profile menu). At a phone viewport a **round search button (FAB) also appears fixed at the bottom-right** (it is not rendered at desktop widths, where the header carries a search field instead, and it is never rendered on `/search` or `/settings`). **Logged out there is no header at all** — the header appearing is itself the signal that the session took, and its absence while logged out is correct rather than a missing sign-in affordance.
 
 - If `/api/auth/test-login` returns 404, test credentials are absent — verify only logged-out surfaces and note the limitation.
-- **Never attempt the OAuth sign-in path** (`/login` → the primary handle form). It redirects off-origin to a PDS and requires human consent; off-origin traffic is invisible to you and the flow cannot complete. Checking that `/login` renders the form is all that's possible.
-- The "app password" disclosure on `/login` posts same-origin and would work, but you don't have credential values — use `/api/auth/test-login` instead.
-- Writing data while authenticated is safe and expected: everything lands in the throwaway test account's PDS, not a real user's.
+- **For the regular test account, don't attempt the OAuth sign-in path** (`/login` → the primary handle form) — `/api/auth/test-login` is faster and equivalent. Checking that `/login` renders the form is all that's needed of it. The one OAuth flow worth driving is the spaces sandbox account below, and only when criteria ask for it.
+- Writing data while authenticated is safe and expected: everything lands in a throwaway account's PDS, not a real user's.
+
+## The spaces sandbox account (second identity, spaces-capable)
+
+Besides the regular test account (a bsky.social-style account with **no** spaces capability), there is a second test identity on Bluesky's spaces-alpha sandbox PDS, for verifying permissioned-spaces behavior:
+
+- **Handle**: `sim.spaces-alpha.bsky.network` · **PDS**: `https://spaces-alpha.host.bsky.network` (a disposable sandbox — writes, space creation, and membership changes on this account are safe and expected).
+- **Credentials** are provisioned as the environment secrets **`SPACES_ALPHA_USERNAME`** and **`SPACES_ALPHA_PASSWORD`** (never hardcoded here). If you cannot access those secret values, say so explicitly in your findings — that is an environment limitation, not an app failure.
+- **Preferred sign-in route — the app-password disclosure on `/login`**: it posts same-origin (no off-origin navigation) with the handle and password, and the resulting session **bypasses OAuth scope enforcement**, so the full space surface (Spaces section on `/settings`, diary space, membership management) is exercisable with it today.
+- **OAuth route (only when a criterion explicitly asks)**: submitting the handle in `/login`'s primary form redirects to the sandbox PDS's hosted login page on `spaces-alpha.host.bsky.network`; completing that form plus the consent screen returns to the app signed in. Expect cross-origin navigation — that is part of the flow, not a leak. **Currently an OAuth session's Spaces section on `/settings` shows an error state** — the OAuth token lacks space permissions until the app ships its permission-set scope — and that error state is correct today; the section being entirely *absent* for this account is the bug to catch.
+- **Capability contrast is itself a test surface**: the regular test account must never show a "Spaces" section on `/settings`; the sandbox account must always show it (healthy for app-password sessions, error-state for OAuth sessions until the scope work lands). Capability state must not leak between identities across sign-ins.
 
 ## Surfaces
 
