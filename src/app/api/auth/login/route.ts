@@ -86,11 +86,10 @@ async function startLogin(identifier: string | null) {
   try {
     const tag = await chooseClientTag(value);
     const client = await getOAuthClient(tag);
-    // Tag the state so the callback restores with the same client the token was
-    // issued to; the AS echoes `state` back verbatim.
-    const url = await client.authorize(value, {
-      state: `${tag}:${crypto.randomUUID()}`,
-    });
+    // No wire-state tagging: the SDK sends its own nonce as `state`, so the
+    // client tag is recorded by this client's wrapped state store (nonce -> tag)
+    // and recovered in the callback. See ./oauth-store.
+    const url = await client.authorize(value);
     return NextResponse.redirect(url, { status: 302 });
   } catch (err) {
     const e = err as { status?: number; error?: string; message?: string };

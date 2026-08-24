@@ -1,12 +1,15 @@
-import {
-  NodeOAuthClient,
-  type NodeSavedSession,
-  type NodeSavedSessionStore,
-  type NodeSavedState,
-  type NodeSavedStateStore,
-} from "@atproto/oauth-client-node";
+import { NodeOAuthClient } from "@atproto/oauth-client-node";
 import { JoseKey } from "@atproto/jwk-jose";
 import { BASE_URL } from "@/config/baseUrl";
+import {
+  resolveClientTagFromState,
+  sharedSessionStore,
+  taggedStateStore,
+  type OAuthClientTag,
+} from "@/lib/atproto/oauth-store";
+
+export type { OAuthClientTag };
+export { resolveClientTagFromState };
 
 export const OAUTH_SCOPE = "atproto transition:generic";
 
@@ -24,9 +27,9 @@ export const SPACES_OAUTH_SCOPE =
 
 const HANDLE_RESOLVER = "https://bsky.social";
 
-// Which OAuth client a session was created with. Persisted on the app session so
+// OAuthClientTag ("default" | "spaces") is defined in ./oauth-store and
+// re-exported above. It records which client a session was created with, so
 // getAuthedAgent restores with the same client_id the token was issued to.
-export type OAuthClientTag = "default" | "spaces";
 
 function metadataFor(tag: OAuthClientTag): { path: string; scope: string } {
   return tag === "spaces"
@@ -69,8 +72,6 @@ export function spacesClientMetadata(baseUrl: string = BASE_URL) {
 
 interface OAuthGlobals {
   keyPromise?: Promise<JoseKey>;
-  stateStore?: Map<string, NodeSavedState>;
-  sessionStore?: Map<string, NodeSavedSession>;
   clientPromises?: Partial<Record<OAuthClientTag, Promise<NodeOAuthClient>>>;
 }
 
@@ -90,46 +91,18 @@ export async function getPublicJwks() {
   return { keys: [key.publicJwk] };
 }
 
-function stateStore(): NodeSavedStateStore {
-  store.stateStore ??= new Map();
-  const map = store.stateStore;
-  return {
-    get: (key) => map.get(key),
-    set: (key, value) => {
-      map.set(key, value);
-    },
-    del: (key) => {
-      map.delete(key);
-    },
-  };
-}
-
-function sessionStore(): NodeSavedSessionStore {
-  store.sessionStore ??= new Map();
-  const map = store.sessionStore;
-  return {
-    get: (key) => map.get(key),
-    set: (key, value) => {
-      map.set(key, value);
-    },
-    del: (key) => {
-      map.delete(key);
-    },
-  };
-}
-
 async function buildClient(tag: OAuthClientTag): Promise<NodeOAuthClient> {
   const key = await getSigningKey();
   return new NodeOAuthClient({
     clientMetadata: tag === "spaces" ? spacesClientMetadata() : clientMetadata(),
     keyset: [key],
     handleResolver: HANDLE_RESOLVER,
-    // Both clients share the state/session stores: state entries are keyed by an
-    // opaque per-request key and sessions by DID, so the two never collide, and
-    // the login route tags outgoing state so the callback restores with the
-    // matching client.
-    stateStore: stateStore(),
-    sessionStore: sessionStore(),
+    // Both clients share ONE underlying state map and ONE session map (via the
+    // globalThis singletons in ./oauth-store). The state store is wrapped per
+    // client so it records this flow's nonce -> tag, letting the callback restore
+    // with the same client_id the token was issued to.
+    stateStore: taggedStateStore(tag),
+    sessionStore: sharedSessionStore(),
   });
 }
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Agent } from "@atproto/api";
-import { getOAuthClient, type OAuthClientTag } from "@/lib/atproto/oauth";
+import { getOAuthClient, resolveClientTagFromState } from "@/lib/atproto/oauth";
 import { resolveIdentity } from "@/lib/atproto/identity";
 import { initSpacesForSession } from "@/lib/atproto/spaces";
 import { getSession } from "@/lib/session";
@@ -8,16 +8,12 @@ import { BASE_URL } from "@/config/baseUrl";
 
 export const runtime = "nodejs";
 
-// The login route prefixes `state` with the client tag it used; recover it so
-// the code is exchanged (and the session later restored) with that same client.
-function clientTagFromState(params: URLSearchParams): OAuthClientTag {
-  const state = params.get("state") ?? "";
-  return state.startsWith("spaces:") ? "spaces" : "default";
-}
-
 export async function GET(request: NextRequest) {
   const params = new URL(request.url).searchParams;
-  const tag = clientTagFromState(params);
+  // The wire `state` is the SDK's nonce; recover (single-use) which client
+  // started this flow so the code is exchanged — and the session later restored
+  // — with that same client_id.
+  const tag = resolveClientTagFromState(params.get("state"));
 
   try {
     const client = await getOAuthClient(tag);
