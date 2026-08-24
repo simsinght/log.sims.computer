@@ -147,7 +147,14 @@ export async function detectSpacesCapability(
   agent: Agent,
 ): Promise<CapabilityResult> {
   try {
-    await agent.com.atproto.space.listSpaces({ limit: 1 });
+    // Probe with a type filter: an unfiltered listSpaces asserts a wildcard
+    // space:* grant, but the app's permission set deliberately grants only its
+    // own space types — asking within that footprint keeps a correctly-scoped
+    // token from reading as unauthorized.
+    await agent.com.atproto.space.listSpaces({
+      limit: 1,
+      type: DIARY_SPACE.type,
+    });
     return { capable: true, definitive: true };
   } catch (err) {
     if (isScopeError(err))
