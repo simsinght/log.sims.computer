@@ -1,0 +1,13 @@
+{
+  "lexicon": 1,
+  "id": "computer.sims.log.watchlist",
+  "defs": {
+    "main": {
+      "type": "space",
+      "key": "literal:watchlist",
+      "name": "tvlog shared watchlist",
+      "description": "A watchlist any member can add to and everyone can see.",
+      "collections": ["computer.sims.log.watchlistItem"]
+    }
+  }
+}

@@ -9,7 +9,7 @@ export async function POST() {
 
   if (session.method === "oauth" && session.did) {
     try {
-      const client = await getOAuthClient();
+      const client = await getOAuthClient(session.oauthClient ?? "default");
       await client.revoke(session.did);
     } catch {
       // best-effort revocation; clear local session regardless

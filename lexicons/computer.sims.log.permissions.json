@@ -1,0 +1,33 @@
+{
+  "lexicon": 1,
+  "id": "computer.sims.log.permissions",
+  "defs": {
+    "main": {
+      "type": "permission-set",
+      "title": "tvlog",
+      "detail": "Read and write your tvlog diary and shared watchlists",
+      "permissions": [
+        {
+          "type": "permission",
+          "resource": "space",
+          "spaceType": "computer.sims.log.diary",
+          "authority": "*",
+          "skey": "diary",
+          "collection": ["computer.sims.log.watch"],
+          "action": ["read", "create", "update", "delete"],
+          "manage": ["create", "update", "delete"]
+        },
+        {
+          "type": "permission",
+          "resource": "space",
+          "spaceType": "computer.sims.log.watchlist",
+          "authority": "*",
+          "skey": "watchlist",
+          "collection": ["computer.sims.log.watchlistItem"],
+          "action": ["read", "create", "update", "delete"],
+          "manage": ["create", "update", "delete"]
+        }
+      ]
+    }
+  }
+}
