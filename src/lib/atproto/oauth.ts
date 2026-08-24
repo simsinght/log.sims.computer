@@ -9,16 +9,40 @@ import { JoseKey } from "@atproto/jwk-jose";
 import { BASE_URL } from "@/config/baseUrl";
 
 export const OAUTH_SCOPE = "atproto transition:generic";
+
+// The spaces client's scope. It drops transition:generic (which grants no space
+// access at all — see docs/plans/spaces-oauth-scopes.md) in favour of the
+// granular grants a spaces-capable account needs:
+//   - include:computer.sims.log.permissions — the diary + shared-watchlist
+//     space grants, resolved from the published permission set.
+//   - repo:social.popfeed.feed.list / .listItem — the public "shelf" cards a
+//     spaces account still writes to its public repo.
+//   - blob accept=image/... — the poster blobs uploaded alongside those cards.
+// Reads of public repo data aren't scope-gated, so no repo read grant is needed.
+export const SPACES_OAUTH_SCOPE =
+  "atproto include:computer.sims.log.permissions repo:social.popfeed.feed.list repo:social.popfeed.feed.listItem blob?accept=image/jpeg&accept=image/png&accept=image/webp";
+
 const HANDLE_RESOLVER = "https://bsky.social";
 
-export function clientMetadata(baseUrl: string = BASE_URL) {
+// Which OAuth client a session was created with. Persisted on the app session so
+// getAuthedAgent restores with the same client_id the token was issued to.
+export type OAuthClientTag = "default" | "spaces";
+
+function metadataFor(tag: OAuthClientTag): { path: string; scope: string } {
+  return tag === "spaces"
+    ? { path: "spaces-client-metadata.json", scope: SPACES_OAUTH_SCOPE }
+    : { path: "client-metadata.json", scope: OAUTH_SCOPE };
+}
+
+function buildMetadata(tag: OAuthClientTag, baseUrl: string) {
   const base = baseUrl.replace(/\/$/, "");
+  const { path, scope } = metadataFor(tag);
   return {
-    client_id: `${base}/api/auth/client-metadata.json`,
+    client_id: `${base}/api/auth/${path}`,
     client_name: "tvlog",
     client_uri: base,
     redirect_uris: [`${base}/api/auth/callback`] as [string, ...string[]],
-    scope: OAUTH_SCOPE,
+    scope,
     grant_types: ["authorization_code", "refresh_token"] as [
       "authorization_code",
       "refresh_token",
@@ -32,11 +56,22 @@ export function clientMetadata(baseUrl: string = BASE_URL) {
   };
 }
 
+export function clientMetadata(baseUrl: string = BASE_URL) {
+  return buildMetadata("default", baseUrl);
+}
+
+// Second client for spaces-capable PDSes. Shares the jwks/callback with the
+// legacy client but declares the granular spaces scope; bsky.social logins never
+// see this metadata (see the login route's PDS-based routing).
+export function spacesClientMetadata(baseUrl: string = BASE_URL) {
+  return buildMetadata("spaces", baseUrl);
+}
+
 interface OAuthGlobals {
   keyPromise?: Promise<JoseKey>;
   stateStore?: Map<string, NodeSavedState>;
   sessionStore?: Map<string, NodeSavedSession>;
-  clientPromise?: Promise<NodeOAuthClient>;
+  clientPromises?: Partial<Record<OAuthClientTag, Promise<NodeOAuthClient>>>;
 }
 
 const globals = globalThis as typeof globalThis & {
@@ -83,18 +118,29 @@ function sessionStore(): NodeSavedSessionStore {
   };
 }
 
-async function buildClient(): Promise<NodeOAuthClient> {
+async function buildClient(tag: OAuthClientTag): Promise<NodeOAuthClient> {
   const key = await getSigningKey();
   return new NodeOAuthClient({
-    clientMetadata: clientMetadata(),
+    clientMetadata: tag === "spaces" ? spacesClientMetadata() : clientMetadata(),
     keyset: [key],
     handleResolver: HANDLE_RESOLVER,
+    // Both clients share the state/session stores: state entries are keyed by an
+    // opaque per-request key and sessions by DID, so the two never collide, and
+    // the login route tags outgoing state so the callback restores with the
+    // matching client.
     stateStore: stateStore(),
     sessionStore: sessionStore(),
   });
 }
 
-export function getOAuthClient(): Promise<NodeOAuthClient> {
-  store.clientPromise ??= buildClient();
-  return store.clientPromise;
+export function getOAuthClient(
+  tag: OAuthClientTag = "default",
+): Promise<NodeOAuthClient> {
+  store.clientPromises ??= {};
+  store.clientPromises[tag] ??= buildClient(tag);
+  return store.clientPromises[tag];
+}
+
+export function getSpacesOAuthClient(): Promise<NodeOAuthClient> {
+  return getOAuthClient("spaces");
 }

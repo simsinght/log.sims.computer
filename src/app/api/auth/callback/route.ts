@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Agent } from "@atproto/api";
-import { getOAuthClient } from "@/lib/atproto/oauth";
+import { getOAuthClient, type OAuthClientTag } from "@/lib/atproto/oauth";
 import { resolveIdentity } from "@/lib/atproto/identity";
 import { initSpacesForSession } from "@/lib/atproto/spaces";
 import { getSession } from "@/lib/session";
@@ -8,11 +8,19 @@ import { BASE_URL } from "@/config/baseUrl";
 
 export const runtime = "nodejs";
 
+// The login route prefixes `state` with the client tag it used; recover it so
+// the code is exchanged (and the session later restored) with that same client.
+function clientTagFromState(params: URLSearchParams): OAuthClientTag {
+  const state = params.get("state") ?? "";
+  return state.startsWith("spaces:") ? "spaces" : "default";
+}
+
 export async function GET(request: NextRequest) {
   const params = new URL(request.url).searchParams;
+  const tag = clientTagFromState(params);
 
   try {
-    const client = await getOAuthClient();
+    const client = await getOAuthClient(tag);
     const { session: oauthSession } = await client.callback(params);
     const did = oauthSession.did;
 
@@ -27,9 +35,12 @@ export async function GET(request: NextRequest) {
     session.did = did;
     session.handle = handle ?? did;
     session.method = "oauth";
+    session.oauthClient = tag;
     // Drop any capability cached under a previous identity on this cookie before
-    // re-probing, so a stale flag can never cross accounts.
+    // re-probing, so a stale flag (or a stale "needs re-auth") can never cross
+    // accounts or survive a re-login through the spaces client.
     session.spacesCapable = undefined;
+    session.spacesUnauthorized = undefined;
     await initSpacesForSession(new Agent(oauthSession), session);
     await session.save();
 

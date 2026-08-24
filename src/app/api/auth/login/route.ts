@@ -1,8 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOAuthClient } from "@/lib/atproto/oauth";
+import { getOAuthClient, type OAuthClientTag } from "@/lib/atproto/oauth";
+import { resolveIdentity } from "@/lib/atproto/identity";
 import { BASE_URL } from "@/config/baseUrl";
 
 export const runtime = "nodejs";
+
+// PDS hosts known to speak com.atproto.space.* — always routed to the spaces
+// client regardless of the probe. bsky.social is deliberately absent, so its
+// logins keep the legacy client and its transition:generic scope untouched.
+const SPACES_HOSTS = new Set(["pds.sims.computer"]);
+
+// Best-effort, unauthenticated capability probe used as a secondary signal
+// alongside the host allowlist. A PDS that implements the method answers an
+// unauthenticated call with 401/403 (auth/scope required); one that doesn't
+// answers 404/501 (unknown method). Any ambiguity or network failure falls back
+// to "not spaces", so bsky.social can never be misrouted.
+async function probeSpacesCapable(pdsHost: string): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `https://${pdsHost}/xrpc/com.atproto.space.listSpaces?limit=1`,
+      { signal: AbortSignal.timeout(3000) },
+    );
+    return res.status === 401 || res.status === 403;
+  } catch {
+    return false;
+  }
+}
+
+// Resolve the target account's PDS host, then choose the client: a known spaces
+// host (or one the probe says implements spaces) gets the spaces client;
+// everything else — bsky.social included — gets the legacy client.
+async function chooseClientTag(identifier: string): Promise<OAuthClientTag> {
+  let pdsHost: string | null = null;
+  if (/^https?:\/\//i.test(identifier)) {
+    try {
+      pdsHost = new URL(identifier).host;
+    } catch {
+      pdsHost = null;
+    }
+  } else {
+    try {
+      pdsHost = new URL((await resolveIdentity(identifier)).pdsUrl).host;
+    } catch {
+      pdsHost = null;
+    }
+  }
+  if (!pdsHost) return "default";
+  if (SPACES_HOSTS.has(pdsHost)) return "spaces";
+  if (await probeSpacesCapable(pdsHost)) return "spaces";
+  return "default";
+}
 
 function loginError(code: string): NextResponse {
   return NextResponse.redirect(new URL(`/login?error=${code}`, BASE_URL), {
@@ -34,9 +81,12 @@ async function startLogin(identifier: string | null) {
 
   const value = identifier.trim();
   try {
-    const client = await getOAuthClient();
+    const tag = await chooseClientTag(value);
+    const client = await getOAuthClient(tag);
+    // Tag the state so the callback restores with the same client the token was
+    // issued to; the AS echoes `state` back verbatim.
     const url = await client.authorize(value, {
-      state: crypto.randomUUID(),
+      state: `${tag}:${crypto.randomUUID()}`,
     });
     return NextResponse.redirect(url, { status: 302 });
   } catch (err) {

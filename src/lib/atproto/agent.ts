@@ -7,7 +7,7 @@ export async function getAuthedAgent(): Promise<Agent | null> {
   if (!session.did) return null;
 
   if (session.method === "oauth") {
-    const client = await getOAuthClient();
+    const client = await getOAuthClient(session.oauthClient ?? "default");
     const oauthSession = await client.restore(session.did);
     return new Agent(oauthSession);
   }
