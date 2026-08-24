@@ -1,0 +1,46 @@
+{
+  "lexicon": 1,
+  "id": "computer.sims.log.watchlistItem",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "any",
+      "description": "A shared-watchlist entry: one show a member wants to watch, written into that member's own space-repo. rkey is 'tmdb-<id>' so an add is idempotent per show.",
+      "record": {
+        "type": "object",
+        "required": ["tmdbId", "mediaType", "title", "addedAt"],
+        "properties": {
+          "tmdbId": {
+            "type": "string",
+            "description": "TMDB id of the show."
+          },
+          "mediaType": {
+            "type": "string",
+            "enum": ["movie", "tv"],
+            "description": "Media type of the work. Watchlist entries are TV shows today."
+          },
+          "title": {
+            "type": "string",
+            "description": "Display title of the show.",
+            "maxLength": 3000,
+            "maxGraphemes": 300
+          },
+          "posterUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "TMDB poster URL for the card."
+          },
+          "year": {
+            "type": "string",
+            "description": "Release year (four digits), denormalized for display."
+          },
+          "addedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When the show was added to the watchlist."
+          }
+        }
+      }
+    }
+  }
+}

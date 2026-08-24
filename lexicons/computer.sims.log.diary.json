@@ -1,0 +1,13 @@
+{
+  "lexicon": 1,
+  "id": "computer.sims.log.diary",
+  "defs": {
+    "main": {
+      "type": "space",
+      "key": "literal:diary",
+      "name": "tvlog diary",
+      "description": "Your private watch diary — tags, notes, and mood.",
+      "collections": ["computer.sims.log.watch"]
+    }
+  }
+}
