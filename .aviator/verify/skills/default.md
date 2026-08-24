@@ -104,3 +104,11 @@ The app is an installable PWA (the point is to add it to a phone home screen; iO
 ## For criteria authors (humans)
 
 Phrase acceptance criteria as browser-observable behavior. Shell-command criteria ("npm run typecheck passes") are not analyzable by the browser collector and come back as errors.
+
+## Mandatory scenarios
+
+When the active criteria reference the spaces sandbox account (either sign-in
+route), those flows are REQUIRED collection scenarios — drive them in the
+browser before anything else. Static code review must never substitute for
+them: a criterion about signed-in UI state with no runtime evidence is a
+collection gap, and the honest outcome is to report the flow as not-exercised.
