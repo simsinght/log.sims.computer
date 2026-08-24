@@ -499,3 +499,13 @@ filters client-side by parsing space URIs (open question).
   are the interop surface either way.
 </content>
 </invoke>
+
+## 9. Direction update (2026-08-23, Sim)
+
+The tab is **"Social," not "Events"**: one feed mixing upcoming/hosted watch
+parties AND diary activity (own entries now; members' diaries via the
+credential flow once membership exists), with filter chips at the top
+(All · Parties · Diary). This also resolves the buried-diary problem — home
+dropped its Recent-diary section, and space-resident diary entries currently
+have no browsing surface; the Social tab becomes that surface rather than
+adding a separate diary page. Slice 5's tab IA should be drafted this way.
