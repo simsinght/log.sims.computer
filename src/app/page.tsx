@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getAuthedAgent } from "@/lib/atproto/agent";
 import { getSession } from "@/lib/session";
 import { resolveRouting } from "@/lib/atproto/routing";
+import { errFields } from "@/lib/atproto/spaces";
 import { getWatching, type WatchingResult } from "@/lib/watching";
 import Watching from "@/components/Watching";
 
@@ -33,7 +34,11 @@ export default async function Home() {
   try {
     const routing = await resolveRouting(agent, session);
     watching = await getWatching(agent, agent.did, routing.diary);
-  } catch {
+  } catch (err) {
+    console.error("[home] watching failed; rendering empty", {
+      did: agent.did,
+      ...errFields(err),
+    });
     watching = { shows: [], inProgressCount: 0 };
   }
 
