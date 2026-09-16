@@ -5,34 +5,29 @@ import { BASE_URL } from "@/config/baseUrl";
 
 export const runtime = "nodejs";
 
-// PDS hosts known to speak com.atproto.space.* — always routed to the spaces
-// client regardless of the probe. bsky.social is deliberately absent, so its
-// logins keep the legacy client and its transition:generic scope untouched.
-const SPACES_HOSTS = new Set([
-  "pds.sims.computer",
-  "spaces-alpha.host.bsky.network",
-]);
+// PDS hosts known to speak com.atproto.space.* — routed to the spaces client.
+// Everything else — bsky.social included — gets the legacy client, so its
+// transition:generic scope stays untouched. Extend without a rebuild via
+// SPACES_PDS_HOSTS (comma-separated hostnames).
+//
+// This is an allowlist on purpose. An unauthenticated capability probe used to
+// live here (401/403 = method exists, 404/501 = unknown method), but mainline
+// PDS now auth-gates every com.atproto.* method before routing, so an unknown
+// method also answers 401 and the probe classified every bsky.social account as
+// spaces-capable. Capability is only knowable with a token, which the callback's
+// detectSpacesCapability handles.
+const SPACES_HOSTS = new Set(
+  [
+    "pds.sims.computer",
+    "spaces-alpha.host.bsky.network",
+    ...(process.env.SPACES_PDS_HOSTS ?? "").split(","),
+  ]
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean),
+);
 
-// Best-effort, unauthenticated capability probe used as a secondary signal
-// alongside the host allowlist. A PDS that implements the method answers an
-// unauthenticated call with 401/403 (auth/scope required); one that doesn't
-// answers 404/501 (unknown method). Any ambiguity or network failure falls back
-// to "not spaces", so bsky.social can never be misrouted.
-async function probeSpacesCapable(pdsHost: string): Promise<boolean> {
-  try {
-    const res = await fetch(
-      `https://${pdsHost}/xrpc/com.atproto.space.listSpaces?limit=1`,
-      { signal: AbortSignal.timeout(3000) },
-    );
-    return res.status === 401 || res.status === 403;
-  } catch {
-    return false;
-  }
-}
-
-// Resolve the target account's PDS host, then choose the client: a known spaces
-// host (or one the probe says implements spaces) gets the spaces client;
-// everything else — bsky.social included — gets the legacy client.
+// Resolve the target account's PDS host, then choose the client: an allowlisted
+// spaces host gets the spaces client; everything else gets the legacy client.
 async function chooseClientTag(identifier: string): Promise<OAuthClientTag> {
   let pdsHost: string | null = null;
   if (/^https?:\/\//i.test(identifier)) {
@@ -49,9 +44,7 @@ async function chooseClientTag(identifier: string): Promise<OAuthClientTag> {
     }
   }
   if (!pdsHost) return "default";
-  if (SPACES_HOSTS.has(pdsHost)) return "spaces";
-  if (await probeSpacesCapable(pdsHost)) return "spaces";
-  return "default";
+  return SPACES_HOSTS.has(pdsHost.toLowerCase()) ? "spaces" : "default";
 }
 
 function loginError(code: string): NextResponse {
