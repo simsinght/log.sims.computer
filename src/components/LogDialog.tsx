@@ -294,10 +294,71 @@ export default function LogDialog({
     }
   }
 
-  function onTagBlur() {
+  function finishTagBlur() {
     setTagFocused(false);
     setHighlight(-1);
     commitDraft();
+  }
+
+  // Leaving the field hides the suggestion row (and may turn the draft into
+  // a chip), which reflows the sheet. If that happens mid-press, the control
+  // that was pressed (Log watch, a chip's ×) moves out from under the
+  // pointer and no click fires. So a blur caused by a pointer press waits
+  // until the press has finished; the submitted tags already include any
+  // draft, so nothing is lost in between.
+  const pressing = useRef(false);
+  const blurDeferred = useRef(false);
+  const finishTagBlurRef = useRef(finishTagBlur);
+  useEffect(() => {
+    finishTagBlurRef.current = finishTagBlur;
+  });
+
+  useEffect(() => {
+    let fallback: number | undefined;
+    function settle() {
+      window.clearTimeout(fallback);
+      pressing.current = false;
+      if (!blurDeferred.current) return;
+      blurDeferred.current = false;
+      finishTagBlurRef.current();
+    }
+    function onDown() {
+      window.clearTimeout(fallback);
+      pressing.current = true;
+    }
+    // A tap's mousedown/click arrive after pointerup, so the press normally
+    // settles on click; the timer covers presses that end without one.
+    function onUp() {
+      window.clearTimeout(fallback);
+      fallback = window.setTimeout(settle, 600);
+    }
+    function onClick() {
+      window.setTimeout(settle, 0);
+    }
+    window.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onUp, true);
+    window.addEventListener("click", onClick, true);
+    return () => {
+      window.clearTimeout(fallback);
+      window.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onUp, true);
+      window.removeEventListener("click", onClick, true);
+    };
+  }, []);
+
+  function onTagFocus() {
+    blurDeferred.current = false;
+    setTagFocused(true);
+  }
+
+  function onTagBlur() {
+    if (pressing.current) {
+      blurDeferred.current = true;
+      return;
+    }
+    finishTagBlur();
   }
 
   useEffect(() => {
@@ -668,9 +729,8 @@ export default function LogDialog({
                             {tag}
                             <button
                               type="button"
-                              // Keep focus in the input: a blur here hides the
-                              // suggestion row, the sheet reflows, and the
-                              // release lands off the × so no click fires.
+                              // Keep focus in the input: this button unmounts
+                              // with its chip, which would drop focus to <body>.
                               onMouseDown={(e) => e.preventDefault()}
                               onClick={() => removeChip(tag)}
                               aria-label={`Remove tag ${tag}`}
@@ -687,7 +747,7 @@ export default function LogDialog({
                           value={draft}
                           onChange={(e) => onDraftChange(e.target.value)}
                           onKeyDown={onTagKeyDown}
-                          onFocus={() => setTagFocused(true)}
+                          onFocus={onTagFocus}
                           onBlur={onTagBlur}
                           placeholder={
                             chips.length === 0
@@ -719,6 +779,10 @@ export default function LogDialog({
                               type="button"
                               role="option"
                               aria-selected={i === highlight}
+                              // Options are reached with the arrow keys, not
+                              // Tab: tabbing onto one blurs the input, which
+                              // unmounts the row and drops focus to <body>.
+                              tabIndex={-1}
                               onMouseDown={(e) => e.preventDefault()}
                               onClick={() => chooseSuggestion(s)}
                               className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
