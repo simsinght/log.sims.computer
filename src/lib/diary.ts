@@ -22,7 +22,12 @@ export interface DiaryDay {
   entries: DiaryEntry[];
 }
 
-function dayKey(iso: string): string {
+// UTC calendar date of an ISO timestamp. Server-side grouping can only be UTC
+// (the server never knows the viewer's timezone), so a 9:15 PM Pacific watch
+// (stored as 04:15Z) lands on the next day here. UI that shows days to a
+// person should group in the browser instead — see groupByLocalDay in
+// src/lib/diaryLocal.ts, which /social uses.
+function utcDayKey(iso: string): string {
   return iso.slice(0, 10);
 }
 
@@ -50,12 +55,14 @@ async function resolveTitles(
   return resolved;
 }
 
-export async function buildDiary(
+// Flat diary entries, newest watchedAt first, with titles resolved. Entries
+// with no watchedAt are dropped.
+export async function listDiaryEntries(
   agent: Agent,
   did: string,
   limit = 50,
   dest: WriteDestination = PUBLIC_REPO,
-): Promise<DiaryDay[]> {
+): Promise<DiaryEntry[]> {
   const watches = await listWatches(agent, did, limit, dest);
   const titles = await resolveTitles(watches);
 
@@ -76,10 +83,22 @@ export async function buildDiary(
     };
   });
 
+  return entries.filter((e) => e.watchedAt);
+}
+
+// Diary grouped by **UTC** day (newest first) — what GET /api/diary returns.
+// Day keys are UTC dates, not the viewer's local dates; don't render them as
+// a person's days without regrouping client-side (see utcDayKey above).
+export async function buildDiary(
+  agent: Agent,
+  did: string,
+  limit = 50,
+  dest: WriteDestination = PUBLIC_REPO,
+): Promise<DiaryDay[]> {
+  const entries = await listDiaryEntries(agent, did, limit, dest);
   const byDay = new Map<string, DiaryEntry[]>();
   for (const entry of entries) {
-    if (!entry.watchedAt) continue;
-    const key = dayKey(entry.watchedAt);
+    const key = utcDayKey(entry.watchedAt);
     const bucket = byDay.get(key);
     if (bucket) bucket.push(entry);
     else byDay.set(key, [entry]);
