@@ -2,7 +2,8 @@ import Link from "next/link";
 import { getAuthedAgent } from "@/lib/atproto/agent";
 import { getSession } from "@/lib/session";
 import { resolveRouting } from "@/lib/atproto/routing";
-import { buildDiary, type DiaryDay } from "@/lib/diary";
+import { errFields } from "@/lib/atproto/spaces";
+import { listDiaryEntries, type DiaryEntry } from "@/lib/diary";
 import SocialFeed from "@/components/SocialFeed";
 
 export const dynamic = "force-dynamic";
@@ -33,14 +34,19 @@ export default async function SocialPage() {
   const agent = await getAuthedAgent();
   if (!agent || !agent.did) return <SignInPrompt />;
 
-  let days: DiaryDay[] = [];
+  let entries: DiaryEntry[] = [];
   try {
     // routing.diary reads the user's diary space for spaces-capable accounts and
     // the public repo otherwise — the single seam records.ts writes through.
     const routing = await resolveRouting(agent, session);
-    days = await buildDiary(agent, agent.did, 50, routing.diary);
-  } catch {
-    days = [];
+    // Flat list: SocialFeed groups by day in the viewer's timezone.
+    entries = await listDiaryEntries(agent, agent.did, 50, routing.diary);
+  } catch (err) {
+    console.error("[social] diary failed; rendering empty", {
+      did: agent.did,
+      ...errFields(err),
+    });
+    entries = [];
   }
 
   return (
@@ -49,7 +55,7 @@ export default async function SocialPage() {
         <div className="mb-6">
           <h1 className="text-3xl font-bold tracking-tight">Social</h1>
         </div>
-        <SocialFeed days={days} />
+        <SocialFeed entries={entries} />
       </div>
     </div>
   );

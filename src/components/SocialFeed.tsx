@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { DiaryDay, DiaryEntry } from "@/lib/diary";
+import { groupByLocalDay } from "@/lib/diaryLocal";
+import SocialFeedSkeleton from "@/components/SocialFeedSkeleton";
 
 type Filter = "all" | "diary";
 
@@ -12,15 +14,17 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: "diary", label: "Diary" },
 ];
 
+// Day keys and times are rendered only after mount (see SocialFeed), so these
+// format in the viewer's timezone. `date` is a local YYYY-MM-DD day key.
 function formatDay(date: string): string {
-  const parsed = new Date(`${date}T00:00:00Z`);
+  const [y, m, d] = date.split("-").map(Number);
+  const parsed = new Date(y, m - 1, d);
   if (Number.isNaN(parsed.getTime())) return date;
   return parsed.toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
-    timeZone: "UTC",
   });
 }
 
@@ -68,12 +72,7 @@ function EntryRow({ entry }: { entry: DiaryEntry }) {
           </span>
         )}
         {time && (
-          <span
-            suppressHydrationWarning
-            className="ml-auto text-xs text-gray-600"
-          >
-            {time}
-          </span>
+          <span className="ml-auto text-xs text-gray-600">{time}</span>
         )}
       </div>
       {entry.tags.length > 0 && (
@@ -114,8 +113,16 @@ function DiaryDays({ days }: { days: DiaryDay[] }) {
   );
 }
 
-export default function SocialFeed({ days }: { days: DiaryDay[] }) {
+export default function SocialFeed({ entries }: { entries: DiaryEntry[] }) {
   const [filter, setFilter] = useState<Filter>("all");
+  // Grouping and time formatting depend on the viewer's timezone, which the
+  // server can't know, so they happen only in the browser after mount. Until
+  // then the skeleton shows (null), which also keeps server and client markup
+  // identical for hydration.
+  const [days, setDays] = useState<DiaryDay[] | null>(null);
+  useEffect(() => {
+    setDays(groupByLocalDay(entries));
+  }, [entries]);
 
   return (
     <div>
@@ -145,7 +152,7 @@ export default function SocialFeed({ days }: { days: DiaryDay[] }) {
         })}
       </div>
 
-      {days.length === 0 ? (
+      {entries.length === 0 ? (
         <div className="rounded-lg border-2 border-dashed border-gray-800 p-12 text-center text-gray-500">
           <p>Nothing logged yet.</p>
           <Link
@@ -155,6 +162,8 @@ export default function SocialFeed({ days }: { days: DiaryDay[] }) {
             Search shows
           </Link>
         </div>
+      ) : days === null ? (
+        <SocialFeedSkeleton />
       ) : (
         <DiaryDays days={days} />
       )}
