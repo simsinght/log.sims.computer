@@ -2,6 +2,9 @@
   "name": "log-sims-computer",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.19"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -14,7 +17,7 @@
     "@atproto/xrpc": "0.0.0-spaces-alpha-20260818163953",
     "@atproto/oauth-client-node": "^0.4.9",
     "iron-session": "^8.0.4",
-    "next": "^15.1.6",
+    "next": "^15.5.29",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -23,7 +26,7 @@
     "@types/react": "^19.0.6",
     "@types/react-dom": "^19.0.3",
     "eslint": "^9.18.0",
-    "eslint-config-next": "^15.1.6",
+    "eslint-config-next": "^15.5.29",
     "postcss": "^8.4.49",
     "prettier": "^3.4.2",
     "tailwindcss": "^3.4.17",
