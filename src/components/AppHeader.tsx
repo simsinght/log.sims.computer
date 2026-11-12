@@ -60,6 +60,14 @@ function ProfileMenu() {
         >
           <Link
             role="menuitem"
+            href="/social"
+            onClick={() => setOpen(false)}
+            className="block w-full px-4 py-2.5 text-left text-sm text-gray-200 transition-colors hover:bg-gray-800"
+          >
+            Social
+          </Link>
+          <Link
+            role="menuitem"
             href="/watchlist"
             onClick={() => setOpen(false)}
             className="block w-full px-4 py-2.5 text-left text-sm text-gray-200 transition-colors hover:bg-gray-800"

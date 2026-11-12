@@ -127,7 +127,11 @@ export default function LogDialog({
   const [when, setWhen] = useState<When>("now");
   const [pickedDate, setPickedDate] = useState<Date>(() => todayNoon());
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [tagsInput, setTagsInput] = useState("");
+  const [chips, setChips] = useState<string[]>([]);
+  const [draft, setDraft] = useState("");
+  const [tagFocused, setTagFocused] = useState(false);
+  const [highlight, setHighlight] = useState(-1);
+  const [vocab, setVocab] = useState<string[]>([]);
   const [note, setNote] = useState("");
   const [rewatch, setRewatch] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -187,14 +191,201 @@ export default function LogDialog({
     }
   }
 
-  const tags = useMemo(() => parseTags(tagsInput), [tagsInput]);
+  // The tags actually submitted: committed chips plus any uncommitted draft
+  // text, so trailing input is never lost even if the field never blurred.
+  const tags = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const tag of [...chips, ...parseTags(draft)]) {
+      if (seen.has(tag)) continue;
+      seen.add(tag);
+      out.push(tag);
+    }
+    return out;
+  }, [chips, draft]);
+
+  const suggestions = useMemo(() => {
+    const q = draft.trim().toLowerCase();
+    const chosen = new Set(chips);
+    const pool = vocab.filter((t) => !chosen.has(t));
+    const matches = q ? pool.filter((t) => t.startsWith(q) && t !== q) : pool;
+    return matches.slice(0, 8);
+  }, [vocab, draft, chips]);
+
+  const showSuggestions = tagFocused && suggestions.length > 0;
+
+  function addChips(raw: string) {
+    const parsed = parseTags(raw);
+    if (parsed.length === 0) return;
+    setChips((prev) => {
+      const next = [...prev];
+      for (const t of parsed) if (!next.includes(t)) next.push(t);
+      return next;
+    });
+  }
+
+  function commitDraft() {
+    if (!draft.trim()) return;
+    addChips(draft);
+    setDraft("");
+    setHighlight(-1);
+  }
+
+  function chooseSuggestion(tag: string) {
+    addChips(tag);
+    setDraft("");
+    setHighlight(-1);
+  }
+
+  function removeChip(tag: string) {
+    setChips((prev) => prev.filter((t) => t !== tag));
+  }
+
+  function onDraftChange(value: string) {
+    // A comma is a delimiter: commit whole parts and keep the tail as the draft.
+    if (value.includes(",")) {
+      const parts = value.split(",");
+      const tail = parts.pop() ?? "";
+      addChips(parts.join(" "));
+      setDraft(tail.replace(/^\s+/, ""));
+    } else {
+      setDraft(value);
+    }
+    setHighlight(-1);
+  }
+
+  function onTagKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (highlight >= 0 && highlight < suggestions.length) {
+        chooseSuggestion(suggestions[highlight]);
+      } else {
+        commitDraft();
+      }
+      return;
+    }
+    if (e.key === ",") {
+      e.preventDefault();
+      commitDraft();
+      return;
+    }
+    if (e.key === "Backspace" && draft === "" && chips.length > 0) {
+      e.preventDefault();
+      setChips((prev) => prev.slice(0, -1));
+      return;
+    }
+    if (e.key === "ArrowDown" && showSuggestions) {
+      e.preventDefault();
+      setHighlight((h) => Math.min(h + 1, suggestions.length - 1));
+      return;
+    }
+    if (e.key === "ArrowUp" && showSuggestions) {
+      e.preventDefault();
+      setHighlight((h) => Math.max(h - 1, -1));
+      return;
+    }
+    if (e.key === "Escape" && draft) {
+      // First Escape clears the in-progress tag; a second closes the sheet.
+      e.preventDefault();
+      e.stopPropagation();
+      setDraft("");
+      setHighlight(-1);
+    }
+  }
+
+  function finishTagBlur() {
+    setTagFocused(false);
+    setHighlight(-1);
+    commitDraft();
+  }
+
+  // Leaving the field hides the suggestion row (and may turn the draft into
+  // a chip), which reflows the sheet. If that happens mid-press, the control
+  // that was pressed (Log watch, a chip's ×) moves out from under the
+  // pointer and no click fires. So a blur caused by a pointer press waits
+  // until the press has finished; the submitted tags already include any
+  // draft, so nothing is lost in between.
+  const pressing = useRef(false);
+  const blurDeferred = useRef(false);
+  const finishTagBlurRef = useRef(finishTagBlur);
+  useEffect(() => {
+    finishTagBlurRef.current = finishTagBlur;
+  });
 
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+    let fallback: number | undefined;
+    function settle() {
+      window.clearTimeout(fallback);
+      pressing.current = false;
+      if (!blurDeferred.current) return;
+      blurDeferred.current = false;
+      finishTagBlurRef.current();
     }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    function onDown() {
+      window.clearTimeout(fallback);
+      pressing.current = true;
+    }
+    // A tap's mousedown/click arrive after pointerup, so the press normally
+    // settles on click; the timer covers presses that end without one.
+    function onUp() {
+      window.clearTimeout(fallback);
+      fallback = window.setTimeout(settle, 600);
+    }
+    function onClick() {
+      window.setTimeout(settle, 0);
+    }
+    window.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onUp, true);
+    window.addEventListener("click", onClick, true);
+    return () => {
+      window.clearTimeout(fallback);
+      window.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onUp, true);
+      window.removeEventListener("click", onClick, true);
+    };
+  }, []);
+
+  function onTagFocus() {
+    blurDeferred.current = false;
+    setTagFocused(true);
+  }
+
+  function onTagBlur() {
+    if (pressing.current) {
+      blurDeferred.current = true;
+      return;
+    }
+    finishTagBlur();
+  }
+
+  useEffect(() => {
+    if (!detailsOpen) return;
+    let cancelled = false;
+    fetch("/api/tags")
+      .then((r) => (r.ok ? r.json() : { tags: [] }))
+      .then((d) => {
+        if (cancelled || !Array.isArray(d.tags)) return;
+        setVocab(d.tags.filter((t: unknown): t is string => typeof t === "string"));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [detailsOpen]);
+
+  useEffect(() => {
+    // On window, not document: React's root container is `document`, so a
+    // document listener would sit beside React's delegated one and run even
+    // when a field (the tag input) stops propagation. Window is always after
+    // document on the bubble path; `defaultPrevented` marks a consumed key.
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !e.defaultPrevented) onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
   const airDate = useMemo(() => airDateNoon(target.airDate), [target.airDate]);
@@ -525,30 +716,87 @@ export default function LogDialog({
 
                 {detailsOpen && (
                   <div className="space-y-4 border-t border-gray-800 px-3 py-3">
-                    <label className="block">
+                    <div className="block">
                       <span className="mb-1 block text-sm text-gray-400">
                         Tags
                       </span>
-                      <input
-                        type="text"
-                        value={tagsInput}
-                        onChange={(e) => setTagsInput(e.target.value)}
-                        placeholder="with-alex at-home rewatch…"
-                        className="w-full rounded-lg border border-gray-800 bg-[#0a0a0a] px-3 py-2 text-sm placeholder-gray-600 outline-none focus:border-gray-600"
-                      />
-                      {tags.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {tags.map((tag) => (
-                            <span
-                              key={tag}
-                              className="rounded-full bg-gray-800 px-2.5 py-0.5 text-xs text-gray-300"
+                      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-gray-800 bg-[#0a0a0a] px-2 py-1.5 focus-within:border-gray-600">
+                        {chips.map((tag) => (
+                          <span
+                            key={tag}
+                            className="inline-flex items-center gap-1 rounded-full bg-gray-800 py-1 pl-2.5 pr-1 text-xs text-gray-200"
+                          >
+                            {tag}
+                            <button
+                              type="button"
+                              // Keep focus in the input: this button unmounts
+                              // with its chip, which would drop focus to <body>.
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => removeChip(tag)}
+                              aria-label={`Remove tag ${tag}`}
+                              className="flex h-4 w-4 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
                             >
-                              {tag}
-                            </span>
+                              <span aria-hidden="true" className="text-sm leading-none">
+                                &times;
+                              </span>
+                            </button>
+                          </span>
+                        ))}
+                        <input
+                          type="text"
+                          value={draft}
+                          onChange={(e) => onDraftChange(e.target.value)}
+                          onKeyDown={onTagKeyDown}
+                          onFocus={onTagFocus}
+                          onBlur={onTagBlur}
+                          placeholder={
+                            chips.length === 0
+                              ? "with-alex at-home rewatch…"
+                              : "Add another…"
+                          }
+                          aria-label="Add a tag"
+                          role="combobox"
+                          aria-expanded={showSuggestions}
+                          aria-controls="tag-suggestion-list"
+                          aria-autocomplete="list"
+                          autoComplete="off"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          className="min-w-[8ch] flex-1 bg-transparent px-1 py-1 text-sm placeholder-gray-600 outline-none"
+                        />
+                      </div>
+                      {showSuggestions && (
+                        <div
+                          id="tag-suggestion-list"
+                          role="listbox"
+                          aria-label="Tag suggestions"
+                          className="mt-2 flex flex-wrap gap-1.5"
+                        >
+                          {suggestions.map((s, i) => (
+                            <button
+                              key={s}
+                              type="button"
+                              role="option"
+                              aria-selected={i === highlight}
+                              // Options are reached with the arrow keys, not
+                              // Tab: tabbing onto one blurs the input, which
+                              // unmounts the row and drops focus to <body>.
+                              tabIndex={-1}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => chooseSuggestion(s)}
+                              className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                                i === highlight
+                                  ? "border-gray-500 bg-gray-700 text-white"
+                                  : "border-gray-700 bg-[#0a0a0a] text-gray-300 hover:border-gray-500 hover:text-white"
+                              }`}
+                            >
+                              {s}
+                            </button>
                           ))}
                         </div>
                       )}
-                    </label>
+                    </div>
 
                     <label className="block">
                       <span className="mb-1 block text-sm text-gray-400">
