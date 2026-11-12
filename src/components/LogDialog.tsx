@@ -668,6 +668,10 @@ export default function LogDialog({
                             {tag}
                             <button
                               type="button"
+                              // Keep focus in the input: a blur here hides the
+                              // suggestion row, the sheet reflows, and the
+                              // release lands off the × so no click fires.
+                              onMouseDown={(e) => e.preventDefault()}
                               onClick={() => removeChip(tag)}
                               aria-label={`Remove tag ${tag}`}
                               className="flex h-4 w-4 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
