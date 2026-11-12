@@ -316,11 +316,15 @@ export default function LogDialog({
   }, [detailsOpen]);
 
   useEffect(() => {
+    // On window, not document: React's root container is `document`, so a
+    // document listener would sit beside React's delegated one and run even
+    // when a field (the tag input) stops propagation. Window is always after
+    // document on the bubble path; `defaultPrevented` marks a consumed key.
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !e.defaultPrevented) onClose();
     }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
   const airDate = useMemo(() => airDateNoon(target.airDate), [target.airDate]);
