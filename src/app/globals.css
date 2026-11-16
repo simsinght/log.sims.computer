@@ -12,3 +12,25 @@ body {
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/*
+ * iOS Safari zooms the page in when a focused form control's font-size is
+ * below 16px (and leaves it zoomed). On phones / touch screens, floor every
+ * text-entry control at 16px so focusing one never triggers that zoom; the
+ * desktop sizes set by utilities (e.g. `text-sm`) are untouched. Pinch-zoom
+ * stays enabled: the fix is the font size, not the viewport meta.
+ *
+ * `!important` is needed because this is a plain element selector and must
+ * beat single-class utilities like `.text-sm` (higher specificity) from
+ * `@tailwind utilities` above. It also pins anything larger to 16px on
+ * phones, so a control that should be bigger than 16px there needs its own
+ * `!` utility (e.g. `!text-lg`).
+ */
+@media (max-width: 639.98px), (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]):not([type="hidden"]),
+  textarea,
+  select,
+  [contenteditable]:not([contenteditable="false"]) {
+    font-size: 16px !important;
+  }
+}
