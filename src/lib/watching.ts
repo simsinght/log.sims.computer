@@ -10,6 +10,7 @@ import {
   earliestWatched,
   pickNextEpisode,
   seasonFullyWatched,
+  type EpisodeRef,
   type NextEpisode,
   type SeasonEpisodeList,
 } from "@/lib/nextEpisode";
@@ -22,6 +23,11 @@ export interface WatchingShow {
   year: string | null;
   posterUrl: string | null;
   next: NextEpisode;
+  // What the log sheet needs to tell whether "Catch up" would backfill
+  // anything, without a request: the watched episodes and TMDB's per-season
+  // episode counts (real seasons only).
+  watched: EpisodeRef[];
+  seasonEpisodeCounts: Record<number, number>;
 }
 
 export interface WatchingResult {
@@ -46,7 +52,10 @@ const CANDIDATE_POOL = 24;
 async function computeNext(
   item: CurrentlyWatchingItem,
   today: string,
-): Promise<NextEpisode | null> {
+): Promise<{
+  next: NextEpisode;
+  seasonEpisodeCounts: Record<number, number>;
+} | null> {
   const start = earliestWatched(item.watchedEpisodes);
   if (!start) return null;
 
@@ -55,6 +64,10 @@ async function computeNext(
     const seasonsToWalk = detail.seasons
       .filter((s) => s.seasonNumber >= 1 && s.seasonNumber >= start.seasonNumber)
       .sort((a, b) => a.seasonNumber - b.seasonNumber);
+    const seasonEpisodeCounts: Record<number, number> = {};
+    for (const s of detail.seasons) {
+      if (s.seasonNumber >= 1) seasonEpisodeCounts[s.seasonNumber] = s.episodeCount;
+    }
 
     const loaded: SeasonEpisodeList[] = [];
     for (const summary of seasonsToWalk) {
@@ -73,7 +86,7 @@ async function computeNext(
       );
       loaded.push({ seasonNumber: summary.seasonNumber, episodes });
       const next = pickNextEpisode(item.watchedEpisodes, loaded, today);
-      if (next) return next;
+      if (next) return { next, seasonEpisodeCounts };
     }
     return null;
   } catch {
@@ -118,14 +131,16 @@ export async function getWatching(
   const today = new Date().toISOString().slice(0, 10);
   const candidates = await Promise.all(
     ranked.slice(0, CANDIDATE_POOL).map(async (item) => {
-      const next = await computeNext(item, today);
-      if (!next) return null;
+      const computed = await computeNext(item, today);
+      if (!computed) return null;
       return {
         tmdbId: item.tmdbId,
         title: item.title,
         year: item.year,
         posterUrl: item.posterUrl,
-        next,
+        next: computed.next,
+        watched: item.watchedEpisodes,
+        seasonEpisodeCounts: computed.seasonEpisodeCounts,
       } satisfies WatchingShow;
     }),
   );

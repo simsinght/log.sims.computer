@@ -112,3 +112,38 @@ export function seasonFullyWatched(
   }
   return true;
 }
+
+/**
+ * Whether logging `target` with "Catch up" ticked would backfill anything:
+ * true when some real (season >= 1) episode before it is unwatched, false when
+ * every earlier episode is watched, null when that can't be told from what is
+ * known (an earlier season's episode count is missing).
+ *
+ * `seasonEpisodeCounts` maps season number -> TMDB episode count (episodes are
+ * taken to be numbered 1..count); a season absent from the map has no episodes,
+ * matching the catch-up route, which never fetches a season TMDB doesn't list.
+ * Pass null when the counts aren't known at all. Episodes before an episode
+ * being logged are taken to have aired.
+ */
+export function hasEarlierUnwatched(
+  watched: EpisodeRef[],
+  target: EpisodeRef,
+  seasonEpisodeCounts: Record<number, number> | null,
+): boolean | null {
+  if (target.seasonNumber < 1) return false;
+  const seen = new Set(
+    watched.map((e) => `${e.seasonNumber}-${e.episodeNumber}`),
+  );
+  for (let n = 1; n < target.episodeNumber; n++) {
+    if (!seen.has(`${target.seasonNumber}-${n}`)) return true;
+  }
+  if (target.seasonNumber === 1) return false;
+  if (!seasonEpisodeCounts) return null;
+  for (let s = 1; s < target.seasonNumber; s++) {
+    const count = seasonEpisodeCounts[s] ?? 0;
+    for (let n = 1; n <= count; n++) {
+      if (!seen.has(`${s}-${n}`)) return true;
+    }
+  }
+  return false;
+}

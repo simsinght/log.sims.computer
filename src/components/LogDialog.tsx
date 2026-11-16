@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import WheelDatePicker from "@/components/WheelDatePicker";
+import { hasEarlierUnwatched, type EpisodeRef } from "@/lib/nextEpisode";
 
 export interface LogTarget {
   tmdbId: number;
@@ -12,6 +13,14 @@ export interface LogTarget {
   episode: number;
   episodeName?: string;
   airDate?: string | null;
+  // The show's watch progress as the opener already knows it (show page,
+  // Watching card). Lets the sheet decide whether "Catch up" has anything to
+  // backfill without a request; when absent, the sheet asks the catch-up
+  // route's dry run instead.
+  progress?: {
+    watched: EpisodeRef[];
+    seasonEpisodeCounts: Record<number, number> | null;
+  };
 }
 
 function todayNoon(): Date {
@@ -143,8 +152,54 @@ export default function LogDialog({
   const [catchUpWarning, setCatchUpWarning] = useState<string | null>(null);
   const dryRunSeq = useRef(0);
 
-  const catchUpEligible =
+  // "Catch up" is offered only when ticking it would backfill at least one
+  // episode. The opener's watch progress usually answers that outright; when
+  // it can't, a background dry run does, and the control stays hidden until
+  // that count comes back above zero (never shown-then-removed). Neither path
+  // holds up the rest of the sheet or the Log watch button.
+  const catchUpPositional =
     target.mediaType === "tv" && (target.season > 1 || target.episode > 1);
+  const knownGap = useMemo(
+    () =>
+      !catchUpPositional
+        ? false
+        : target.progress
+          ? hasEarlierUnwatched(
+              target.progress.watched,
+              { seasonNumber: target.season, episodeNumber: target.episode },
+              target.progress.seasonEpisodeCounts,
+            )
+          : null,
+    [catchUpPositional, target.progress, target.season, target.episode],
+  );
+  const [probedGap, setProbedGap] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (knownGap !== null) return;
+    let cancelled = false;
+    fetch("/api/log/catch-up", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tmdbId: target.tmdbId,
+        title: target.title,
+        season: target.season,
+        episode: target.episode,
+        watchedAt: new Date().toISOString(),
+        dryRun: true,
+      }),
+    })
+      .then((r) => (r.ok ? r.json() : { count: 0 }))
+      .then((d: { count?: unknown }) => {
+        if (!cancelled) setProbedGap(typeof d.count === "number" && d.count > 0);
+      })
+      .catch(() => {
+        if (!cancelled) setProbedGap(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [knownGap, target.tmdbId, target.title, target.season, target.episode]);
+  const catchUpEligible = (knownGap ?? probedGap) === true;
   const episodeLabel = `S${target.season}E${target.episode}`;
 
   function currentWatchedAt(): string {

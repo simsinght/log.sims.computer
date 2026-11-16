@@ -3,6 +3,7 @@
 // (src/lib/nextEpisode.ts, loaded via Node's native type-stripping) and runs it
 // against hand-built season data. Run: node scripts/next-episode-check.mjs
 import {
+  hasEarlierUnwatched,
   pickNextEpisode,
   seasonFullyWatched,
 } from "../src/lib/nextEpisode.ts";
@@ -97,6 +98,28 @@ const fw = [
   ["other seasons' watches don't count", seasonFullyWatched(range(1, 1, 9), 2, 8), false],
 ];
 for (const [name, got, want] of fw) {
+  results.push({ name, pass: got === want, detail: `got ${got}, want ${want}` });
+}
+
+// hasEarlierUnwatched decides whether the log sheet offers "Catch up".
+const counts = { 1: 9, 2: 8, 3: 10 };
+const at = (s, e) => ({ seasonNumber: s, episodeNumber: e });
+const cu = [
+  ["catch-up: S1E1 of a fresh show -> hidden", [], at(1, 1), counts, false],
+  ["catch-up: S1E2 with S1E1 watched (and S1E6) -> hidden", eps(1, 1, 6), at(1, 2), counts, false],
+  ["catch-up: S1E4 with only S1E1 watched -> shown", eps(1, 1), at(1, 4), counts, true],
+  ["catch-up: S2E1 with all of S1 watched -> hidden", range(1, 1, 9), at(2, 1), counts, false],
+  ["catch-up: S2E1 with S1 partly watched -> shown", range(1, 1, 5), at(2, 1), counts, true],
+  ["catch-up: S3E1 first log mid-series -> shown", [], at(3, 1), counts, true],
+  ["catch-up: S3E3 after starting at S3E1 (home card) -> shown", eps(3, 1, 2), at(3, 3), counts, true],
+  ["catch-up: season TMDB doesn't list counts as empty -> hidden", range(1, 1, 9), at(3, 1), { 1: 9, 3: 10 }, false],
+  ["catch-up: S2E1 with unknown counts -> ask the server (null)", range(1, 1, 9), at(2, 1), null, null],
+  ["catch-up: same-season gap is known even without counts -> shown", eps(2, 1), at(2, 3), null, true],
+  ["catch-up: specials never count -> hidden", [...eps(0, 1), ...range(1, 1, 9)], at(2, 1), { 0: 5, ...counts }, false],
+  ["catch-up: logging a special -> hidden", [], at(0, 3), counts, false],
+];
+for (const [name, watched, target, c, want] of cu) {
+  const got = hasEarlierUnwatched(watched, target, c);
   results.push({ name, pass: got === want, detail: `got ${got}, want ${want}` });
 }
 
