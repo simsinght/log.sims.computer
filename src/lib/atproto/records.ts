@@ -16,6 +16,7 @@ import {
 } from "@/lib/atproto/write";
 import type { WatchlistRoute } from "@/lib/atproto/routing";
 import { SpaceCredentialManager } from "@/lib/atproto/space-credentials";
+import { episodeAlreadyWatched } from "@/lib/nextEpisode";
 import { spaceMemberDids } from "@/lib/atproto/spaces";
 
 export const LIST_COLLECTION = "social.popfeed.feed.list";
@@ -294,6 +295,19 @@ export async function upsertListItem(
   did: string,
   input: UpsertWorkInput,
 ): Promise<StrongRef> {
+  return (await upsertListItemWithHistory(agent, did, input)).subject;
+}
+
+// upsertListItem, also reporting whether the work being logged was already in
+// the account's history before this write: for an episode, whether the
+// listItem's watchedEpisodes already held it; for a movie, whether it already
+// sat in the watched-movies list. POST /api/log uses it to set a watch's
+// rewatch flag, reading the same listItem the upsert reads anyway.
+export async function upsertListItemWithHistory(
+  agent: Agent,
+  did: string,
+  input: UpsertWorkInput,
+): Promise<{ subject: StrongRef; alreadyWatched: boolean }> {
   const creativeWorkType = input.mediaType === "movie" ? "movie" : "tv_show";
   const isPerEpisode =
     input.mediaType === "tv" &&
@@ -327,6 +341,12 @@ export async function upsertListItem(
   );
 
   const episodes = [...(prev?.watchedEpisodes ?? [])];
+  const alreadyWatched =
+    input.mediaType === "movie"
+      ? prev?.listType === listType
+      : input.season !== undefined &&
+        input.episode !== undefined &&
+        episodeAlreadyWatched(episodes, input.season, input.episode);
   if (
     input.mediaType === "tv" &&
     input.season !== undefined &&
@@ -367,7 +387,7 @@ export async function upsertListItem(
       record: value,
       validate: false,
     });
-    return { uri: put.uri, cid: put.cid };
+    return { subject: { uri: put.uri, cid: put.cid }, alreadyWatched };
   }
 
   const created = await writeCreate(agent, PUBLIC_REPO, {
@@ -376,7 +396,10 @@ export async function upsertListItem(
     record: value,
     validate: false,
   });
-  return { uri: created.uri, cid: created.cid };
+  return {
+    subject: { uri: created.uri, cid: created.cid },
+    alreadyWatched,
+  };
 }
 
 export interface CreateWatchInput {

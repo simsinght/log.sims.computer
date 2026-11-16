@@ -3,6 +3,7 @@
 // (src/lib/nextEpisode.ts, loaded via Node's native type-stripping) and runs it
 // against hand-built season data. Run: node scripts/next-episode-check.mjs
 import {
+  episodeAlreadyWatched,
   hasEarlierUnwatched,
   pickNextEpisode,
   seasonFullyWatched,
@@ -120,6 +121,18 @@ const cu = [
 ];
 for (const [name, watched, target, c, want] of cu) {
   const got = hasEarlierUnwatched(watched, target, c);
+  results.push({ name, pass: got === want, detail: `got ${got}, want ${want}` });
+}
+
+// episodeAlreadyWatched sets a new watch's rewatch flag in POST /api/log.
+const rw = [
+  ["rewatch: episode already in history -> true", episodeAlreadyWatched(eps(1, 1, 6), 1, 6), true],
+  ["rewatch: first watch -> false", episodeAlreadyWatched(eps(1, 1, 6), 1, 2), false],
+  ["rewatch: same episode number in another season -> false", episodeAlreadyWatched(eps(2, 3), 1, 3), false],
+  ["rewatch: empty history -> false", episodeAlreadyWatched([], 1, 1), false],
+  ["rewatch: malformed entries never match", episodeAlreadyWatched([{ seasonNumber: "1", episodeNumber: "1" }, {}], 1, 1), false],
+];
+for (const [name, got, want] of rw) {
   results.push({ name, pass: got === want, detail: `got ${got}, want ${want}` });
 }
 

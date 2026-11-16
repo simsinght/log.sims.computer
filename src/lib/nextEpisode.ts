@@ -147,3 +147,18 @@ export function hasEarlierUnwatched(
   }
   return false;
 }
+
+/**
+ * Whether an episode is already in a watched list — the basis for a new
+ * watch's rewatch flag (POST /api/log derives it rather than asking).
+ * Malformed entries (non-numeric season/episode) never match.
+ */
+export function episodeAlreadyWatched(
+  watched: { seasonNumber?: unknown; episodeNumber?: unknown }[],
+  seasonNumber: number,
+  episodeNumber: number,
+): boolean {
+  return watched.some(
+    (e) => e.seasonNumber === seasonNumber && e.episodeNumber === episodeNumber,
+  );
+}

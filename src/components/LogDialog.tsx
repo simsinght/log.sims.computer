@@ -142,7 +142,6 @@ export default function LogDialog({
   const [highlight, setHighlight] = useState(-1);
   const [vocab, setVocab] = useState<string[]>([]);
   const [note, setNote] = useState("");
-  const [rewatch, setRewatch] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -549,7 +548,8 @@ export default function LogDialog({
           watchedAt,
           tags,
           note: note.trim() || undefined,
-          rewatch,
+          // No rewatch field: the server sets it when the episode is already
+          // in the account's history (a Rewatch control may return later).
           season: target.season,
           episode: target.episode,
         }),
@@ -864,16 +864,6 @@ export default function LogDialog({
                         placeholder="Optional"
                         className="w-full resize-none rounded-lg border border-gray-800 bg-[#0a0a0a] px-3 py-2 text-sm placeholder-gray-600 outline-none focus:border-gray-600"
                       />
-                    </label>
-
-                    <label className="flex items-center gap-2 text-sm text-gray-300">
-                      <input
-                        type="checkbox"
-                        checked={rewatch}
-                        onChange={(e) => setRewatch(e.target.checked)}
-                        className="h-4 w-4 rounded border-gray-700 bg-[#0a0a0a]"
-                      />
-                      Rewatch
                     </label>
                   </div>
                 )}
