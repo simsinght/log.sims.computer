@@ -634,7 +634,7 @@ export default function LogDialog({
                       : "text-gray-400 hover:text-gray-200"
                   }`}
                 >
-                  Just Finished
+                  Now
                 </button>
                 <button
                   type="button"
@@ -647,7 +647,7 @@ export default function LogDialog({
                       : "text-gray-400 hover:text-gray-200"
                   }`}
                 >
-                  Other
+                  Earlier
                 </button>
               </div>
 
@@ -690,12 +690,12 @@ export default function LogDialog({
                 </label>
               )}
 
-              <div className="rounded-lg border border-gray-800">
+              <div className="border-t border-gray-800">
                 <button
                   type="button"
                   onClick={() => setDetailsOpen((v) => !v)}
                   aria-expanded={detailsOpen}
-                  className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-sm text-gray-400 transition-colors hover:text-gray-200"
+                  className="flex w-full items-center justify-between gap-2 py-2.5 text-sm text-gray-400 transition-colors hover:text-gray-200"
                 >
                   <span>Add tags or a note</span>
                   <svg
@@ -715,7 +715,7 @@ export default function LogDialog({
                 </button>
 
                 {detailsOpen && (
-                  <div className="space-y-4 border-t border-gray-800 px-3 py-3">
+                  <div className="space-y-3 pb-1 pt-1">
                     <div className="block">
                       <span className="mb-1 block text-sm text-gray-400">
                         Tags
