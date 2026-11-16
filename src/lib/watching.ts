@@ -5,14 +5,18 @@ import {
   type CurrentlyWatchingItem,
 } from "@/lib/atproto/records";
 import { PUBLIC_REPO, type WriteDestination } from "@/lib/atproto/write";
-import { getSeasonEpisodes, getShowDetail } from "@/lib/tmdb";
+import {
+  getSeasonEpisodes,
+  getShowDetail,
+  tmdbImageUrl,
+  type TmdbEpisode,
+} from "@/lib/tmdb";
 import {
   earliestWatched,
   pickNextEpisode,
   seasonFullyWatched,
   type EpisodeRef,
   type NextEpisode,
-  type SeasonEpisodeList,
 } from "@/lib/nextEpisode";
 
 export type { NextEpisode };
@@ -22,6 +26,12 @@ export interface WatchingShow {
   title: string;
   year: string | null;
   posterUrl: string | null;
+  // Card art for the next episode, in fallback order: its still, else the
+  // show's backdrop (both 16:9), else the poster above. Both come out of the
+  // show/season responses the next-episode walk already fetched — no extra
+  // TMDB calls.
+  stillUrl: string | null;
+  backdropUrl: string | null;
   next: NextEpisode;
   // What the log sheet needs to tell whether "Catch up" would backfill
   // anything, without a request: the watched episodes and TMDB's per-season
@@ -38,6 +48,9 @@ export interface WatchingResult {
 }
 
 const MAX_CARDS = 12;
+// Cards are at most ~360 CSS px wide (one per row on a phone); w780 covers
+// that at 2x and keeps the upstream fetch small (a still's original can be 4K).
+const CARD_IMAGE_SIZE = "w780";
 // Compute next episodes for more than we show so that caught-up shows, which
 // get filtered out, don't leave the grid short of MAX_CARDS.
 const CANDIDATE_POOL = 24;
@@ -55,6 +68,8 @@ async function computeNext(
 ): Promise<{
   next: NextEpisode;
   seasonEpisodeCounts: Record<number, number>;
+  stillUrl: string | null;
+  backdropUrl: string | null;
 } | null> {
   const start = earliestWatched(item.watchedEpisodes);
   if (!start) return null;
@@ -69,7 +84,7 @@ async function computeNext(
       if (s.seasonNumber >= 1) seasonEpisodeCounts[s.seasonNumber] = s.episodeCount;
     }
 
-    const loaded: SeasonEpisodeList[] = [];
+    const loaded: { seasonNumber: number; episodes: TmdbEpisode[] }[] = [];
     for (const summary of seasonsToWalk) {
       if (
         seasonFullyWatched(
@@ -86,7 +101,19 @@ async function computeNext(
       );
       loaded.push({ seasonNumber: summary.seasonNumber, episodes });
       const next = pickNextEpisode(item.watchedEpisodes, loaded, today);
-      if (next) return { next, seasonEpisodeCounts };
+      if (next) {
+        const stillPath =
+          loaded
+            .find((s) => s.seasonNumber === next.seasonNumber)
+            ?.episodes.find((e) => e.episodeNumber === next.episodeNumber)
+            ?.stillPath ?? null;
+        return {
+          next,
+          seasonEpisodeCounts,
+          stillUrl: tmdbImageUrl(stillPath, CARD_IMAGE_SIZE),
+          backdropUrl: tmdbImageUrl(detail.backdropPath, CARD_IMAGE_SIZE),
+        };
+      }
     }
     return null;
   } catch {
@@ -138,6 +165,8 @@ export async function getWatching(
         title: item.title,
         year: item.year,
         posterUrl: item.posterUrl,
+        stillUrl: computed.stillUrl,
+        backdropUrl: computed.backdropUrl,
         next: computed.next,
         watched: item.watchedEpisodes,
         seasonEpisodeCounts: computed.seasonEpisodeCounts,

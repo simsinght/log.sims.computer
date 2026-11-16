@@ -1,12 +1,31 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
-import { getShowDetail, isConfigured } from "@/lib/tmdb";
-import ShowSeasons from "@/components/ShowSeasons";
+import {
+  getSeasonEpisodes,
+  getShowCast,
+  getShowDetail,
+  isConfigured,
+  type TmdbEpisode,
+  type TmdbPerson,
+} from "@/lib/tmdb";
+import { errFields } from "@/lib/atproto/spaces";
 import WatchlistButton from "@/components/WatchlistButton";
-import { getAuthedAgent } from "@/lib/atproto/agent";
-import { getShowListItem, type ShowListState } from "@/lib/atproto/records";
+import SeasonList from "@/components/SeasonList";
+import EpisodeList from "@/components/EpisodeList";
+import CastList from "@/components/CastList";
+import { getShowWatchState } from "@/lib/showState";
+import { parseRouteInt } from "@/lib/routes";
+import {
+  episodeRows,
+  rowFallbackArt,
+  seasonEpisodeCounts,
+  todayIso,
+} from "@/lib/showPages";
 
 export const dynamic = "force-dynamic";
+
+const sectionHeading =
+  "mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500";
 
 export default async function ShowPage({
   params,
@@ -14,10 +33,8 @@ export default async function ShowPage({
   params: Promise<{ tmdbId: string }>;
 }) {
   const { tmdbId: raw } = await params;
-  const tmdbId = Number(raw);
-  if (!Number.isInteger(tmdbId) || tmdbId <= 0 || !isConfigured()) {
-    notFound();
-  }
+  const tmdbId = parseRouteInt(raw, 1);
+  if (tmdbId === null || !isConfigured()) notFound();
 
   let show;
   try {
@@ -26,26 +43,42 @@ export default async function ShowPage({
     notFound();
   }
 
-  // The show's listItem carries both the watchlist state and the watched
-  // episodes, so one lookup feeds the button and the season list. A failed read
-  // (undefined) leaves the button hidden, while a signed-in account with no
-  // item for this show (null) is simply "none" watched.
-  let listState: ShowListState | null = null;
-  let watched: { seasonNumber: number; episodeNumber: number }[] = [];
-  const agent = await getAuthedAgent();
-  if (agent?.did) {
-    const item = await getShowListItem(agent, agent.did, tmdbId).catch(
-      () => undefined,
-    );
-    if (item !== undefined) {
-      listState = item?.state ?? "none";
-      watched =
-        item?.watchedEpisodes.map((e) => ({
-          seasonNumber: e.seasonNumber,
-          episodeNumber: e.episodeNumber,
-        })) ?? [];
-    }
-  }
+  // A show with exactly one real season (specials don't count) lists that
+  // season's episodes right here instead of making you tap through to it.
+  const realSeasons = show.seasons.filter((s) => s.seasonNumber >= 1);
+  const onlySeason = realSeasons.length === 1 ? realSeasons[0] : null;
+
+  // The account state, the cast and (for a one-season show) the episodes are
+  // independent; none of them may take the page down.
+  const [state, cast, inlineEpisodes] = await Promise.all([
+    getShowWatchState(tmdbId, "show"),
+    getShowCast(tmdbId).catch((err): TmdbPerson[] => {
+      console.error("[show] cast failed; rendering without it", {
+        tmdbId,
+        ...errFields(err),
+      });
+      return [];
+    }),
+    onlySeason
+      ? getSeasonEpisodes(tmdbId, onlySeason.seasonNumber).catch(
+          (err): TmdbEpisode[] | null => {
+            console.error("[show] season episodes failed; listing seasons", {
+              tmdbId,
+              season: onlySeason.seasonNumber,
+              ...errFields(err),
+            });
+            return null;
+          },
+        )
+      : Promise.resolve(null),
+  ]);
+
+  // Inline episodes replace that one season's row; anything else (specials)
+  // still gets a row.
+  const listedSeasons =
+    onlySeason && inlineEpisodes
+      ? show.seasons.filter((s) => s.seasonNumber !== onlySeason.seasonNumber)
+      : show.seasons;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ededed]">
@@ -87,12 +120,12 @@ export default async function ShowPage({
             </div>
           </div>
 
-          {listState && (
+          {state.listState && (
             <div className="mt-4">
               <WatchlistButton
                 tmdbId={show.tmdbId}
                 title={show.title}
-                initialState={listState}
+                initialState={state.listState}
               />
             </div>
           )}
@@ -104,22 +137,42 @@ export default async function ShowPage({
           )}
         </div>
 
-        <div className="mt-8">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-            Seasons
-          </h2>
-          {show.seasons.length === 0 ? (
-            <p className="text-sm text-gray-500">No seasons listed.</p>
-          ) : (
-            <ShowSeasons
+        {onlySeason && inlineEpisodes && (
+          <section className="mt-8">
+            <h2 className={sectionHeading}>Episodes</h2>
+            <EpisodeList
               tmdbId={show.tmdbId}
               title={show.title}
               year={show.year}
-              seasons={show.seasons}
-              watched={watched}
+              seasonNumber={onlySeason.seasonNumber}
+              episodes={episodeRows(inlineEpisodes)}
+              {...rowFallbackArt(show)}
+              watched={state.watched}
+              seasonEpisodeCounts={seasonEpisodeCounts(show.seasons)}
+              signedIn={state.signedIn}
+              today={todayIso()}
             />
-          )}
-        </div>
+          </section>
+        )}
+
+        {(listedSeasons.length > 0 || !onlySeason) && (
+          <section className="mt-8">
+            <h2 className={sectionHeading}>
+              {onlySeason && inlineEpisodes ? "More" : "Seasons"}
+            </h2>
+            {listedSeasons.length === 0 ? (
+              <p className="text-sm text-gray-500">No seasons listed.</p>
+            ) : (
+              <SeasonList
+                tmdbId={show.tmdbId}
+                seasons={listedSeasons}
+                watched={state.watched}
+              />
+            )}
+          </section>
+        )}
+
+        <CastList heading="Cast" people={cast} id="show-cast" />
       </div>
     </div>
   );

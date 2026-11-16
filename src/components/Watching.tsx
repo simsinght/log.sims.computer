@@ -2,9 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
 import LogDialog, { LogTarget } from "@/components/LogDialog";
+import EpisodeArt from "@/components/EpisodeArt";
+import {
+  WATCHING_GRID_CLASS,
+  WATCHING_IMAGE_SIZES,
+} from "@/components/watchingGrid";
+import { episodeHref } from "@/lib/routes";
 import type { WatchingShow } from "@/lib/watching";
 
 function WatchingCard({
@@ -17,25 +22,28 @@ function WatchingCard({
   const label = `S${show.next.seasonNumber}E${show.next.episodeNumber}`;
   const episodeName =
     show.next.name.trim() || `Episode ${show.next.episodeNumber}`;
+  // The whole card leads to the episode it is suggesting; the checkmark sits
+  // over the art but outside the link, so it logs without navigating.
+  const href = episodeHref(
+    show.tmdbId,
+    show.next.seasonNumber,
+    show.next.episodeNumber,
+  );
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-gray-800 bg-[#141414]">
       <div className="relative">
         <Link
-          href={`/show/${show.tmdbId}`}
-          aria-label={show.title}
+          href={href}
+          prefetch={false}
+          aria-label={`${show.title} ${label}`}
           className="block"
         >
-          <div className="relative aspect-[2/3] w-full bg-gray-800">
-            {show.posterUrl && (
-              <Image
-                src={show.posterUrl}
-                alt=""
-                fill
-                sizes="(min-width: 640px) 200px, 45vw"
-                className="object-cover"
-              />
-            )}
-          </div>
+          <EpisodeArt
+            stillUrl={show.stillUrl}
+            backdropUrl={show.backdropUrl}
+            posterUrl={show.posterUrl}
+            sizes={WATCHING_IMAGE_SIZES}
+          />
         </Link>
         <button
           onClick={() =>
@@ -71,18 +79,19 @@ function WatchingCard({
           </svg>
         </button>
       </div>
-      <div className="flex flex-1 flex-col gap-0.5 p-3">
+      <Link
+        href={href}
+        prefetch={false}
+        className="group flex flex-1 flex-col gap-0.5 p-3"
+      >
         <p className="truncate text-sm">
-          <Link
-            href={`/show/${show.tmdbId}`}
-            className="font-medium transition-colors hover:text-white"
-          >
+          <span className="font-medium transition-colors group-hover:text-white">
             {show.title}
-          </Link>
+          </span>
           <span className="text-gray-500"> · {label}</span>
         </p>
         <p className="truncate text-xs text-gray-300">{episodeName}</p>
-      </div>
+      </Link>
     </div>
   );
 }
@@ -135,7 +144,7 @@ export default function Watching({
           {shows.length === 0 ? (
             <EmptyState caughtUp={inProgressCount > 0} />
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className={WATCHING_GRID_CLASS}>
               {shows.map((show) => (
                 <WatchingCard
                   key={show.tmdbId}

@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { DiaryDay, DiaryEntry } from "@/lib/diary";
 import { groupByLocalDay } from "@/lib/diaryLocal";
 import SocialFeedSkeleton from "@/components/SocialFeedSkeleton";
+import { episodeHref, showHref } from "@/lib/routes";
 
 type Filter = "all" | "diary";
 
@@ -48,7 +49,11 @@ function EntryRow({ entry }: { entry: DiaryEntry }) {
       <div className="flex flex-wrap items-baseline gap-x-2">
         {linkable ? (
           <Link
-            href={`/show/${tmdbId}`}
+            href={
+              Number.isInteger(entry.season) && Number.isInteger(entry.episode)
+                ? episodeHref(tmdbId, entry.season as number, entry.episode as number)
+                : showHref(tmdbId)
+            }
             prefetch={false}
             className="font-medium transition-colors hover:text-white hover:underline"
           >
