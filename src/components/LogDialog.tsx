@@ -634,7 +634,7 @@ export default function LogDialog({
                       : "text-gray-400 hover:text-gray-200"
                   }`}
                 >
-                  Just Finished
+                  Now
                 </button>
                 <button
                   type="button"
@@ -647,7 +647,7 @@ export default function LogDialog({
                       : "text-gray-400 hover:text-gray-200"
                   }`}
                 >
-                  Other
+                  Earlier
                 </button>
               </div>
 
