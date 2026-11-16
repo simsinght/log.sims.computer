@@ -1,6 +1,24 @@
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p";
 
+/**
+ * TMDB image sizes as this app uses them (from GET /configuration; measured on
+ * real images):
+ * - posters: 2:3 (w92 · w154 · w185 · w342 · w500 · w780 · original)
+ * - backdrops: 16:9 (w300 · w780 · w1280 · original)
+ * - episode stills: 16:9, the same frame as backdrops. Configuration lists only
+ *   w92 · w185 · w300 · original for stills, and an original can be a 4K frame
+ *   (~1.5 MB), but the image server also renders stills at the backdrop sizes
+ *   w780/w1280 — those are what cards and the episode header ask for.
+ * - profile photos: 2:3 (w45 · w185 · h632 · original)
+ */
+export function tmdbImageUrl(
+  path: string | null | undefined,
+  size: string,
+): string | null {
+  return path ? `${TMDB_IMAGE_BASE_URL}/${size}${path}` : null;
+}
+
 export type MediaType = "movie" | "tv";
 export type SearchType = MediaType | "all";
 
@@ -64,6 +82,13 @@ export function isConfigured(): boolean {
   return Boolean(apiKey());
 }
 
+// Dev aid: with TMDB_LOG_REQUESTS=1, every outbound TMDB API call is logged
+// (path only — never the query string, which carries the key). This is how
+// the per-surface TMDB counts in docs/access-patterns.md are measured.
+function logRequest(path: string): void {
+  if (process.env.TMDB_LOG_REQUESTS === "1") console.log(`[tmdb] GET ${path}`);
+}
+
 async function tmdbFetch(
   path: string,
   query: string,
@@ -75,6 +100,7 @@ async function tmdbFetch(
   url.searchParams.set("api_key", key);
   url.searchParams.set("query", query);
   url.searchParams.set("include_adult", "false");
+  logRequest(path);
 
   const res = await fetch(url, { headers: { Accept: "application/json" } });
   if (!res.ok) {
@@ -100,6 +126,7 @@ async function tmdbDetail(path: string): Promise<TmdbRawResult> {
 
   const url = new URL(`${TMDB_BASE_URL}${path}`);
   url.searchParams.set("api_key", key);
+  logRequest(path);
 
   const res = await fetch(url, { headers: { Accept: "application/json" } });
   if (!res.ok) {
@@ -182,6 +209,7 @@ async function tmdbDetailJson(path: string): Promise<TmdbDetailRaw> {
 
   const url = new URL(`${TMDB_BASE_URL}${path}`);
   url.searchParams.set("api_key", key);
+  logRequest(path);
 
   const res = await fetch(url, { headers: { Accept: "application/json" } });
   if (!res.ok) {
@@ -256,6 +284,9 @@ export interface ShowDetail {
   overview: string;
   posterUrl: string | null;
   backdropUrl: string | null;
+  // Raw TMDB paths, for callers that need another size (tmdbImageUrl).
+  posterPath: string | null;
+  backdropPath: string | null;
   seasons: TmdbSeasonSummary[];
 }
 
@@ -309,6 +340,8 @@ export async function getShowDetail(id: number): Promise<ShowDetail> {
     backdropUrl: backdropPath
       ? `${TMDB_IMAGE_BASE_URL}/original${backdropPath}`
       : null,
+    posterPath,
+    backdropPath,
     seasons,
   };
   showDetailCache.set(id, detail);
@@ -321,6 +354,10 @@ export interface TmdbEpisode {
   overview: string;
   airDate: string | null;
   tmdbId: string | null;
+  // Raw still path (16:9 frame; build a URL with tmdbImageUrl). null is common
+  // for unaired or very new episodes.
+  stillPath: string | null;
+  runtime: number | null;
 }
 
 interface TmdbEpisodeRaw {
@@ -329,6 +366,20 @@ interface TmdbEpisodeRaw {
   name?: string;
   overview?: string;
   air_date?: string | null;
+  still_path?: string | null;
+  runtime?: number | null;
+}
+
+function normalizeEpisode(e: TmdbEpisodeRaw): TmdbEpisode {
+  return {
+    episodeNumber: e.episode_number as number,
+    name: e.name ?? `Episode ${e.episode_number}`,
+    overview: e.overview ?? "",
+    airDate: e.air_date || null,
+    tmdbId: typeof e.id === "number" ? String(e.id) : null,
+    stillPath: e.still_path ?? null,
+    runtime: typeof e.runtime === "number" && e.runtime > 0 ? e.runtime : null,
+  };
 }
 
 const seasonEpisodesCache = new Map<string, TmdbEpisode[]>();
@@ -348,13 +399,7 @@ export async function getSeasonEpisodes(
 
   const episodes: TmdbEpisode[] = (raw.episodes ?? [])
     .filter((e) => typeof e.episode_number === "number")
-    .map((e) => ({
-      episodeNumber: e.episode_number as number,
-      name: e.name ?? `Episode ${e.episode_number}`,
-      overview: e.overview ?? "",
-      airDate: e.air_date ?? null,
-      tmdbId: typeof e.id === "number" ? String(e.id) : null,
-    }));
+    .map(normalizeEpisode);
 
   // The season payload already carries every episode id, so seed the
   // per-episode cache and spare later getEpisodeTmdbId calls a round-trip each.
@@ -389,6 +434,120 @@ export async function getEpisodeTmdbId(
   }
   episodeIdCache.set(cacheKey, result);
   return result;
+}
+
+export interface TmdbPerson {
+  id: number;
+  name: string;
+  character: string;
+  profileUrl: string | null;
+  // Show-level cast only: episodes this person appears in across the series.
+  episodeCount?: number;
+}
+
+interface TmdbCastRaw {
+  id?: number;
+  name?: string;
+  character?: string;
+  profile_path?: string | null;
+  order?: number;
+}
+
+const PROFILE_SIZE = "w185";
+
+function normalizePeople(raw: TmdbCastRaw[] | undefined): TmdbPerson[] {
+  return (raw ?? [])
+    .filter((p) => typeof p.id === "number" && p.name)
+    .map((p) => ({
+      id: p.id as number,
+      name: p.name as string,
+      character: p.character ?? "",
+      profileUrl: tmdbImageUrl(p.profile_path, PROFILE_SIZE),
+    }));
+}
+
+export interface EpisodeDetail extends TmdbEpisode {
+  // Guest stars in TMDB's billing order, then the season regulars credited on
+  // this episode. TMDB returns the same guest list at the top level and under
+  // credits.guest_stars; the top-level one is used.
+  guestStars: TmdbPerson[];
+  cast: TmdbPerson[];
+}
+
+interface TmdbEpisodeDetailRaw extends TmdbEpisodeRaw {
+  guest_stars?: TmdbCastRaw[];
+  credits?: { cast?: TmdbCastRaw[] };
+}
+
+const episodeDetailCache = new Map<string, EpisodeDetail>();
+
+/** One episode with its credits: one TMDB call, cached like the rest. */
+export async function getEpisodeDetail(
+  showId: number,
+  season: number,
+  episode: number,
+): Promise<EpisodeDetail> {
+  const cacheKey = `${showId}:${season}:${episode}`;
+  const cached = episodeDetailCache.get(cacheKey);
+  if (cached) return cached;
+
+  const raw = (await tmdbDetailJson(
+    `/tv/${showId}/season/${season}/episode/${episode}?append_to_response=credits`,
+  )) as TmdbEpisodeDetailRaw;
+  const detail: EpisodeDetail = {
+    ...normalizeEpisode({ ...raw, episode_number: raw.episode_number ?? episode }),
+    guestStars: normalizePeople(raw.guest_stars),
+    cast: normalizePeople(raw.credits?.cast),
+  };
+  episodeDetailCache.set(cacheKey, detail);
+  episodeIdCache.set(cacheKey, detail.tmdbId);
+  return detail;
+}
+
+interface TmdbAggregateCastRaw extends TmdbCastRaw {
+  total_episode_count?: number;
+  roles?: { character?: string; episode_count?: number }[];
+}
+
+// Series regulars only — aggregate_credits lists everyone who ever appeared
+// (hundreds of people, ~0.5 MB for a long-running show); only the head of the
+// list is kept in memory.
+const SHOW_CAST_LIMIT = 15;
+const showCastCache = new Map<number, TmdbPerson[]>();
+
+/**
+ * Show-level cast from aggregate_credits (every season, with episode counts),
+ * not /credits — /credits reflects only the latest season, so it drops
+ * regulars who left (Stranger Things loses Natalia Dyer and Joe Keery) and is
+ * short for long shows (The Simpsons: 6 people). Kept in TMDB's order, which
+ * is by episode count — its per-person `order` field mixes billing indices
+ * from different seasons and would rank one-off guests above recurring cast.
+ */
+export async function getShowCast(showId: number): Promise<TmdbPerson[]> {
+  const cached = showCastCache.get(showId);
+  if (cached) return cached;
+
+  const raw = (await tmdbDetailJson(
+    `/tv/${showId}/aggregate_credits`,
+  )) as { cast?: TmdbAggregateCastRaw[] };
+  const cast = (raw.cast ?? [])
+    .filter((p) => typeof p.id === "number" && p.name)
+    .slice(0, SHOW_CAST_LIMIT)
+    .map((p) => {
+      // A role played in the most episodes is the one to show.
+      const role = [...(p.roles ?? [])].sort(
+        (a, b) => (b.episode_count ?? 0) - (a.episode_count ?? 0),
+      )[0];
+      return {
+        id: p.id as number,
+        name: p.name as string,
+        character: role?.character ?? "",
+        profileUrl: tmdbImageUrl(p.profile_path, PROFILE_SIZE),
+        episodeCount: p.total_episode_count,
+      };
+    });
+  showCastCache.set(showId, cast);
+  return cast;
 }
 
 export async function fetchPosterJpeg(
