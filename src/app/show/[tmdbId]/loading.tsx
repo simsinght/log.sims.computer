@@ -22,17 +22,19 @@ export default function Loading() {
           </div>
         </div>
 
-        <div className="mt-8 space-y-2">
+        <div className="mt-8">
           <div className="mb-3 h-3 w-20 rounded bg-[#1c1c1c]" />
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div
-              key={i}
-              className="flex items-center justify-between gap-3 rounded-lg border border-gray-800 bg-[#141414] px-4 py-4"
-            >
-              <div className="h-4 w-28 rounded bg-[#1c1c1c]" />
-              <div className="h-3 w-20 rounded bg-[#1c1c1c]" />
-            </div>
-          ))}
+          <div className="divide-y divide-gray-800/70">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 py-2.5">
+                <div className="aspect-[2/3] w-10 shrink-0 rounded bg-[#1c1c1c]" />
+                <div className="min-w-0 flex-1">
+                  <div className="h-4 w-28 rounded bg-[#1c1c1c]" />
+                  <div className="mt-2 h-3 w-20 rounded bg-[#141414]" />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
