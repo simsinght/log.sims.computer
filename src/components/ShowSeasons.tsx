@@ -75,6 +75,7 @@ function SeasonPanel({
   season,
   watched,
   watchedCount,
+  seasonEpisodeCounts,
   onLog,
 }: {
   tmdbId: number;
@@ -83,6 +84,7 @@ function SeasonPanel({
   season: TmdbSeasonSummary;
   watched: Set<string>;
   watchedCount: number;
+  seasonEpisodeCounts: Record<number, number>;
   onLog: (target: LogTarget) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -194,6 +196,13 @@ function SeasonPanel({
                         episode: ep.episodeNumber,
                         episodeName: ep.name,
                         airDate: ep.airDate,
+                        progress: {
+                          watched: [...watched].map((key) => {
+                            const [s, e] = key.split("-").map(Number);
+                            return { seasonNumber: s, episodeNumber: e };
+                          }),
+                          seasonEpisodeCounts,
+                        },
                       })
                     }
                     aria-label={
@@ -255,6 +264,14 @@ export default function ShowSeasons({
     return counts;
   }, [watchedKeys]);
 
+  const seasonEpisodeCounts = useMemo(() => {
+    const counts: Record<number, number> = {};
+    for (const s of seasons) {
+      if (s.seasonNumber >= 1) counts[s.seasonNumber] = s.episodeCount;
+    }
+    return counts;
+  }, [seasons]);
+
   return (
     <>
       <div className="space-y-2">
@@ -267,6 +284,7 @@ export default function ShowSeasons({
             season={season}
             watched={watchedKeys}
             watchedCount={watchedCounts.get(season.seasonNumber) ?? 0}
+            seasonEpisodeCounts={seasonEpisodeCounts}
             onLog={setLogTarget}
           />
         ))}

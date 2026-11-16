@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthedAgent } from "@/lib/atproto/agent";
 import { getSession } from "@/lib/session";
 import { resolveRouting } from "@/lib/atproto/routing";
-import { createWatch, upsertListItem } from "@/lib/atproto/records";
+import {
+  createWatch,
+  upsertListItemWithHistory,
+} from "@/lib/atproto/records";
 
 export const runtime = "nodejs";
 
@@ -89,7 +92,10 @@ export async function POST(request: NextRequest) {
     typeof body.note === "string" && body.note.trim()
       ? body.note.trim()
       : undefined;
-  const rewatch = body.rewatch === true;
+  // The log sheet no longer has a Rewatch checkbox: the flag is derived below
+  // from the account's history. An explicit `rewatch: true` is still honoured
+  // so a client can expose the choice again without a route change.
+  const rewatchRequested = body.rewatch === true;
   const season = optionalInt(body.season);
   const episode = optionalInt(body.episode);
 
@@ -98,14 +104,19 @@ export async function POST(request: NextRequest) {
     // follows the routing (diary space for spike accounts).
     const routing = await resolveRouting(agent, await getSession());
 
-    const subject = await upsertListItem(agent, did, {
-      tmdbId,
-      mediaType,
-      title,
-      watchedAt,
-      season,
-      episode,
-    });
+    const { subject, alreadyWatched } = await upsertListItemWithHistory(
+      agent,
+      did,
+      {
+        tmdbId,
+        mediaType,
+        title,
+        watchedAt,
+        season,
+        episode,
+      },
+    );
+    const rewatch = rewatchRequested || alreadyWatched;
 
     const watch = await createWatch(
       agent,

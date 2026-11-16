@@ -48,6 +48,10 @@ function WatchingCard({
               episode: show.next.episodeNumber,
               episodeName: show.next.name,
               airDate: show.next.airDate,
+              progress: {
+                watched: show.watched,
+                seasonEpisodeCounts: show.seasonEpisodeCounts,
+              },
             })
           }
           aria-label={`Log ${label}`}

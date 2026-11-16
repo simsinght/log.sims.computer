@@ -5,14 +5,17 @@ import {
   type CurrentlyWatchingItem,
 } from "@/lib/atproto/records";
 import { PUBLIC_REPO, type WriteDestination } from "@/lib/atproto/write";
-import { getSeasonEpisodes, type TmdbEpisode } from "@/lib/tmdb";
+import { getSeasonEpisodes, getShowDetail } from "@/lib/tmdb";
+import {
+  earliestWatched,
+  pickNextEpisode,
+  seasonFullyWatched,
+  type EpisodeRef,
+  type NextEpisode,
+  type SeasonEpisodeList,
+} from "@/lib/nextEpisode";
 
-export interface NextEpisode {
-  seasonNumber: number;
-  episodeNumber: number;
-  name: string;
-  airDate: string | null;
-}
+export type { NextEpisode };
 
 export interface WatchingShow {
   tmdbId: number;
@@ -20,6 +23,11 @@ export interface WatchingShow {
   year: string | null;
   posterUrl: string | null;
   next: NextEpisode;
+  // What the log sheet needs to tell whether "Catch up" would backfill
+  // anything, without a request: the watched episodes and TMDB's per-season
+  // episode counts (real seasons only).
+  watched: EpisodeRef[];
+  seasonEpisodeCounts: Record<number, number>;
 }
 
 export interface WatchingResult {
@@ -34,67 +42,56 @@ const MAX_CARDS = 12;
 // get filtered out, don't leave the grid short of MAX_CARDS.
 const CANDIDATE_POOL = 24;
 
-function hasAired(ep: TmdbEpisode, today: string): boolean {
-  return ep.airDate !== null && ep.airDate <= today;
-}
-
-// The successor of the latest watched episode: the next number in that season,
-// or episode 1 of the following season when the finale is already watched. A
-// successor that exists on TMDB but hasn't aired yet counts as caught up
-// (null), as does a show with no real (non-special) watched episodes.
+// The show's next episode under the shared rule in ./nextEpisode (first
+// unwatched aired episode after the earliest watched one; gaps are filled
+// before moving past them). Seasons are fetched in order from the earliest
+// watched season and the walk stops at the first season holding a pick, so a
+// typical show costs one season fetch; seasons whose every episode is already
+// watched are skipped without a fetch. null means caught up (or no real
+// watched episodes, or TMDB failed — the card is dropped either way, as before).
 async function computeNext(
   item: CurrentlyWatchingItem,
   today: string,
-): Promise<NextEpisode | null> {
-  const real = item.watchedEpisodes.filter((e) => e.seasonNumber >= 1);
-  if (real.length === 0) return null;
+): Promise<{
+  next: NextEpisode;
+  seasonEpisodeCounts: Record<number, number>;
+} | null> {
+  const start = earliestWatched(item.watchedEpisodes);
+  if (!start) return null;
 
-  let latest = real[0];
-  for (const e of real) {
-    if (
-      e.seasonNumber > latest.seasonNumber ||
-      (e.seasonNumber === latest.seasonNumber &&
-        e.episodeNumber > latest.episodeNumber)
-    ) {
-      latest = e;
+  try {
+    const detail = await getShowDetail(item.tmdbId);
+    const seasonsToWalk = detail.seasons
+      .filter((s) => s.seasonNumber >= 1 && s.seasonNumber >= start.seasonNumber)
+      .sort((a, b) => a.seasonNumber - b.seasonNumber);
+    const seasonEpisodeCounts: Record<number, number> = {};
+    for (const s of detail.seasons) {
+      if (s.seasonNumber >= 1) seasonEpisodeCounts[s.seasonNumber] = s.episodeCount;
     }
-  }
 
-  const season = await getSeasonEpisodes(
-    item.tmdbId,
-    latest.seasonNumber,
-  ).catch(() => [] as TmdbEpisode[]);
-  const maxEp = season.reduce((m, e) => Math.max(m, e.episodeNumber), 0);
-
-  if (latest.episodeNumber < maxEp) {
-    const candidate = season.find(
-      (e) => e.episodeNumber === latest.episodeNumber + 1,
-    );
-    if (candidate && hasAired(candidate, today)) {
-      return {
-        seasonNumber: latest.seasonNumber,
-        episodeNumber: candidate.episodeNumber,
-        name: candidate.name,
-        airDate: candidate.airDate,
-      };
+    const loaded: SeasonEpisodeList[] = [];
+    for (const summary of seasonsToWalk) {
+      if (
+        seasonFullyWatched(
+          item.watchedEpisodes,
+          summary.seasonNumber,
+          summary.episodeCount,
+        )
+      ) {
+        continue;
+      }
+      const episodes = await getSeasonEpisodes(
+        item.tmdbId,
+        summary.seasonNumber,
+      );
+      loaded.push({ seasonNumber: summary.seasonNumber, episodes });
+      const next = pickNextEpisode(item.watchedEpisodes, loaded, today);
+      if (next) return { next, seasonEpisodeCounts };
     }
     return null;
+  } catch {
+    return null;
   }
-
-  const nextSeason = await getSeasonEpisodes(
-    item.tmdbId,
-    latest.seasonNumber + 1,
-  ).catch(() => [] as TmdbEpisode[]);
-  const first = nextSeason.find((e) => e.episodeNumber === 1);
-  if (first && hasAired(first, today)) {
-    return {
-      seasonNumber: latest.seasonNumber + 1,
-      episodeNumber: 1,
-      name: first.name,
-      airDate: first.airDate,
-    };
-  }
-  return null;
 }
 
 export async function getWatching(
@@ -134,14 +131,16 @@ export async function getWatching(
   const today = new Date().toISOString().slice(0, 10);
   const candidates = await Promise.all(
     ranked.slice(0, CANDIDATE_POOL).map(async (item) => {
-      const next = await computeNext(item, today);
-      if (!next) return null;
+      const computed = await computeNext(item, today);
+      if (!computed) return null;
       return {
         tmdbId: item.tmdbId,
         title: item.title,
         year: item.year,
         posterUrl: item.posterUrl,
-        next,
+        next: computed.next,
+        watched: item.watchedEpisodes,
+        seasonEpisodeCounts: computed.seasonEpisodeCounts,
       } satisfies WatchingShow;
     }),
   );
