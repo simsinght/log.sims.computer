@@ -1,5 +1,13 @@
 # spaces-alpha SDK evaluation
 
+> **Superseded wire details (2026-11-17).** The app now targets the 12/13 Nov
+> spaces-alpha API (`0.0.0-spaces-alpha-20261113224550`). `com.atproto.simplespace.*`
+> is gone (lifecycle is `com.atproto.space.*`, membership `com.atproto.memberspace.*`
+> putMembers/removeMembers), `getSpaceCredential` + DPoP became `authorizeSpaceSync`
+> + `Atproto-Space-Credential` with an RFC 9421 signature, and credentials live
+> ~600 s. Current code: `src/lib/atproto/{spaces,space-credentials}.ts`,
+> `scripts/space-probe.mjs`. The rest of this document is the original record.
+
 ## Exact versions
 
 - `@atproto/api` — `0.0.0-spaces-alpha-20260818163953` (npm dist-tag `alpha`)

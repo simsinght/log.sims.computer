@@ -1,5 +1,13 @@
 # Spaces v1: tvlog learns permissioned data
 
+> **Superseded wire details (2026-11-17).** The app now targets the 12/13 Nov
+> spaces-alpha API (`0.0.0-spaces-alpha-20261113224550`). `com.atproto.simplespace.*`
+> is gone (lifecycle is `com.atproto.space.*`, membership `com.atproto.memberspace.*`
+> putMembers/removeMembers), `getSpaceCredential` + DPoP became `authorizeSpaceSync`
+> + `Atproto-Space-Credential` with an RFC 9421 signature, and credentials live
+> ~600 s. Current code: `src/lib/atproto/{spaces,space-credentials}.ts`,
+> `scripts/space-probe.mjs`. The rest of this document is the original record.
+
 *Direction set 2026-08-19. Authoritative plan for the next leg. Context: a
 self-hosted PDS running the permissioned-data reference branch (atproto PR
 #5187 pinned @ bddc99fb) is LIVE at `pds.sims.computer` (invite-only, Container
