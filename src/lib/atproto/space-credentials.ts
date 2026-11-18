@@ -1,30 +1,35 @@
 /**
- * SpaceCredentialManager — the hybrid the SDK evaluation (docs/plans/
- * spaces-sdk-eval.md) called for. The alpha `@atproto/api` gives typed
- * `com.atproto.space.*` methods but does NONE of the security-critical dance:
- * no delegation-token -> credential exchange, no DPoP proof generation, no
- * credential caching. This module ports scripts/space-probe.mjs's flow into
- * typed app code and feeds the resulting `authorization`/`dpop` headers into
- * the alpha's typed read methods via their `opts.headers`.
+ * SpaceCredentialManager — cross-member reads of another writer's space-repo.
+ * The alpha `@atproto/api` gives typed `com.atproto.space.*` methods but does
+ * not obtain, cache, or present space credentials; this module does, using
+ * `@atproto/space` for the request signature and `@atproto/crypto` for keys.
  *
- * Why a session-less "bare" agent for the credentialed calls: the logged-in
- * agent's fetch handler owns the Authorization header. The OAuth session
- * *unconditionally* re-sets it to the user's token (oauth-session.js), which
- * would clobber our `DPoP <credential>`. A session-less AtpAgent adds no auth
- * of its own (atp-agent.js only sets Authorization when it holds a session
- * token AND the request has none), so our injected headers pass through intact
- * — while still going out through the alpha's typed methods and matching URLs.
+ * Flow (12/13 Nov 2026 spaces API):
+ *   1. getDelegationToken — on the user's own PDS, with the user's session.
+ *   2. authorizeSpaceSync — on the space AUTHORITY's PDS, unauthenticated: the
+ *      delegation token and a fresh P-256 did:key (`credentialKey`) go in the
+ *      body. Returns a credential bound to that key (`cnf.kid`), ~600 s life.
+ *   3. Credentialed reads — on the WRITER's PDS, with
+ *        Authorization: Atproto-Space-Credential <credential>
+ *        Atproto-Space-Audience: <writer DID>
+ *      plus an RFC 9421 signature over both, made with the credential's key
+ *      (createSpaceSigHeaders).
  *
- * Only cross-member reads live here. Reading your OWN space-repo is a plain
- * Bearer self-op and goes through the write.ts seam, not this manager.
+ * Only listRecords is used, and it carries no MAC, so there is no HPKE/MAC
+ * verification here. getRecord/getRepo/listRepoOps reads with a credential
+ * would need MAC verification (@atproto/space verifyRecordMac etc.) first.
+ *
+ * Why session-less "bare" agents for steps 2-3: the logged-in agent's fetch
+ * handler owns the Authorization header (the OAuth session unconditionally
+ * re-sets it), which would clobber the credential. A session-less AtpAgent adds
+ * no auth of its own, so the injected headers pass through intact.
+ *
+ * Reading your OWN space-repo is a plain session self-op and goes through the
+ * write.ts seam, not this manager.
  */
 import { AtpAgent, type Agent } from "@atproto/api";
-import {
-  dpopProof,
-  generateDpopKeypair,
-  jwtExpSeconds,
-  type DpopKeypair,
-} from "@/lib/atproto/dpop";
+import { P256Keypair } from "@atproto/crypto";
+import { createSpaceSigHeaders } from "@atproto/space";
 import {
   formatSpaceRecordUri,
   normalizeSpaceUri,
@@ -32,51 +37,85 @@ import {
 } from "@/lib/atproto/space-uri";
 import { resolveIdentity } from "@/lib/atproto/identity";
 
-// Credentials live ~2h; evict this far before the JWT's own `exp` so an
-// in-flight request never races the expiry.
-const SAFETY_MARGIN_MS = 5 * 60 * 1000;
-// Used only if a credential's `exp` can't be read — err short, not long.
-const FALLBACK_TTL_MS = 110 * 60 * 1000;
+type AudienceDid = Parameters<typeof createSpaceSigHeaders>[0]["audience"];
+
+// Evict this far before the credential's own `exp` so an in-flight request
+// never races the expiry. Credentials default to 600 s.
+const SAFETY_MARGIN_MS = 60 * 1000;
+// Used only if a credential's `exp` can't be read: assume well under the
+// 600 s default rather than over it.
+const FALLBACK_TTL_MS = 4 * 60 * 1000;
+// DID -> PDS URL. Short-lived: a PDS move is rare, and a stale entry only costs
+// failed reads until it expires.
+const PDS_TTL_MS = 10 * 60 * 1000;
 
 interface CachedCredential {
   credential: string;
+  // Each credential is bound to its own fresh key (cnf.kid); requests made with
+  // the credential are signed with it.
+  keypair: P256Keypair;
   expiresAtMs: number;
 }
 
-// Per-session (keyed by the user's DID) state: ONE DPoP keypair — every
-// credential this session mints is bound to it via cnf.jkt — plus the resolved
-// PDS URL and a per-space credential cache. Held in module memory rather than
-// the session cookie: an iron-session cookie can't carry a CryptoKey, and a
-// non-extractable in-memory key is strictly safer than serializing a private
-// JWK into a cookie sent on every request. Tradeoff: the cache is per-process,
-// so a server restart or a second instance just re-mints (cheap, self-healing);
-// horizontal scaling would want sticky sessions or a shared store — follow-up.
-interface SessionCredState {
-  keypair: DpopKeypair;
-  pdsUrl?: string;
-  credentials: Map<string, CachedCredential>;
-}
+// Per-session (keyed by the user's DID) credential cache, keyed by space URI.
+// Held in module memory, not the session cookie: a private key must not ride
+// in a cookie. A restart or a second instance just re-mints (cheap).
+const sessions = new Map<string, Map<string, CachedCredential>>();
+const pdsCache = new Map<string, { url: string; expiresAtMs: number }>();
 
-const sessions = new Map<string, SessionCredState>();
-
-async function getSessionState(sessionDid: string): Promise<SessionCredState> {
-  let state = sessions.get(sessionDid);
-  if (!state) {
-    state = { keypair: await generateDpopKeypair(), credentials: new Map() };
-    sessions.set(sessionDid, state);
+function credentialsFor(sessionDid: string): Map<string, CachedCredential> {
+  let m = sessions.get(sessionDid);
+  if (!m) {
+    m = new Map();
+    sessions.set(sessionDid, m);
   }
-  return state;
+  return m;
 }
 
-// The credential/read errors that mean "this credential is no good, re-mint":
-// an outright 401, or the token-rejection error names the PDS surfaces.
+async function pdsUrlFor(did: string): Promise<string> {
+  const hit = pdsCache.get(did);
+  if (hit && hit.expiresAtMs > Date.now()) return hit.url;
+  const url = (await resolveIdentity(did)).pdsUrl;
+  pdsCache.set(did, { url, expiresAtMs: Date.now() + PDS_TTL_MS });
+  return url;
+}
+
+const bareAgents = new Map<string, AtpAgent>();
+function bareAgent(service: string): AtpAgent {
+  let a = bareAgents.get(service);
+  if (!a) {
+    a = new AtpAgent({ service });
+    bareAgents.set(service, a);
+  }
+  return a;
+}
+
+// Read a JWT's `exp` (seconds) without verifying it — only to schedule cache
+// eviction, never to trust the token.
+function jwtExpSeconds(jwt: string): number | null {
+  try {
+    const payload = JSON.parse(
+      Buffer.from(jwt.split(".")[1] ?? "", "base64url").toString("utf8"),
+    ) as { exp?: unknown };
+    return typeof payload.exp === "number" ? payload.exp : null;
+  } catch {
+    return null;
+  }
+}
+
+// The read errors that mean "this credential is no good, re-mint once": an
+// outright 401, an invalid/expired token, or a revoked credential.
 function isInvalidCredential(err: unknown): boolean {
   const e = err as { status?: number; error?: string; message?: string };
   if (e?.status === 401) return true;
   const text = `${e?.error ?? ""} ${e?.message ?? ""}`.toLowerCase();
-  return /invalidtoken|expiredtoken|invalidcredential|notauthorized|badjwt|invaliddpopproof|use_dpop_nonce/.test(
-    text,
-  );
+  return /invalidtoken|expiredtoken|credentialrevoked/.test(text);
+}
+
+// A writer the member list names but who has never written to the space has no
+// space-repo yet; treat that as empty rather than failing the whole sweep.
+function isRepoNotFound(err: unknown): boolean {
+  return (err as { error?: string })?.error === "RepoNotFound";
 }
 
 export interface SpaceRecord {
@@ -89,122 +128,84 @@ export class SpaceCredentialManager {
   private constructor(
     private readonly sessionAgent: Agent,
     private readonly sessionDid: string,
-    private readonly pdsUrl: string,
-    // Session-less agent: pass-through for our injected auth/dpop headers.
-    private readonly bare: AtpAgent,
-    private readonly keypair: DpopKeypair,
   ) {}
 
   static async create(
     sessionAgent: Agent,
     sessionDid: string,
   ): Promise<SpaceCredentialManager> {
-    const state = await getSessionState(sessionDid);
-    state.pdsUrl ??= (await resolveIdentity(sessionDid)).pdsUrl;
-    const bare = new AtpAgent({ service: state.pdsUrl });
-    return new SpaceCredentialManager(
-      sessionAgent,
-      sessionDid,
-      state.pdsUrl,
-      bare,
-      state.keypair,
-    );
+    return new SpaceCredentialManager(sessionAgent, sessionDid);
   }
 
-  private endpoint(nsid: string): string {
-    return `${this.pdsUrl}/xrpc/${nsid}`;
-  }
-
-  // getDelegationToken (user session auth) -> getSpaceCredential (Bearer the
-  // delegation token + a DPoP proof that OMITS `ath`). The delegation call goes
-  // through the logged-in agent so it carries the user's real auth; the
-  // exchange goes through the bare agent so our injected headers survive.
-  private async mint(spaceUri: string): Promise<string> {
+  // getDelegationToken (user session, own PDS) -> authorizeSpaceSync (bare,
+  // authority's PDS, token + fresh credential key in the body).
+  private async mint(spaceUri: string): Promise<CachedCredential> {
     const dt = await this.sessionAgent.com.atproto.space.getDelegationToken({
       space: spaceUri,
     });
-    const token = dt.data.token;
-    if (!token) throw new Error("getDelegationToken returned no token");
+    const delegationToken = dt.data.token;
+    if (!delegationToken) throw new Error("getDelegationToken returned no token");
 
-    const proof = await dpopProof(
-      this.keypair,
-      "POST",
-      this.endpoint("com.atproto.space.getSpaceCredential"),
-    );
-    const ex = await this.bare.com.atproto.space.getSpaceCredential(
-      { space: spaceUri },
-      { headers: { authorization: `Bearer ${token}`, dpop: proof } },
-    );
-    const credential = ex.data.credential;
-    if (!credential) throw new Error("getSpaceCredential returned no credential");
-    return credential;
+    const keypair = await P256Keypair.create();
+    const authorityPds = await pdsUrlFor(parseSpaceUri(spaceUri).authority);
+    const res = await bareAgent(
+      authorityPds,
+    ).com.atproto.space.authorizeSpaceSync({
+      space: spaceUri,
+      credentialKey: keypair.did(),
+      delegationToken,
+    });
+    const credential = res.data.credential;
+    if (!credential) throw new Error("authorizeSpaceSync returned no credential");
+
+    const exp = jwtExpSeconds(credential);
+    const expiresAtMs =
+      (exp != null ? exp * 1000 : Date.now() + FALLBACK_TTL_MS) -
+      SAFETY_MARGIN_MS;
+    return { credential, keypair, expiresAtMs };
   }
 
   private async credentialFor(
     spaceUri: string,
     forceRefresh = false,
-  ): Promise<string> {
-    const state = await getSessionState(this.sessionDid);
-    const cached = state.credentials.get(spaceUri);
+  ): Promise<CachedCredential> {
+    const cache = credentialsFor(this.sessionDid);
+    const cached = cache.get(spaceUri);
     if (!forceRefresh && cached && cached.expiresAtMs > Date.now()) {
-      return cached.credential;
+      return cached;
     }
-    state.credentials.delete(spaceUri);
-    const credential = await this.mint(spaceUri);
-    const exp = jwtExpSeconds(credential);
-    const expiresAtMs =
-      (exp != null ? exp * 1000 : Date.now() + FALLBACK_TTL_MS) -
-      SAFETY_MARGIN_MS;
-    state.credentials.set(spaceUri, { credential, expiresAtMs });
-    return credential;
+    cache.delete(spaceUri);
+    const fresh = await this.mint(spaceUri);
+    cache.set(spaceUri, fresh);
+    return fresh;
   }
 
-  // Run a credentialed GET, attaching `authorization: DPoP <cred>` plus a fresh
-  // proof (new jti, `ath` bound to the credential). On an invalid-credential
-  // response: drop the cache, re-mint once, retry once.
+  // Run a credentialed read against `writerDid`'s PDS with the credential,
+  // audience and signature headers. On an invalid-credential response: drop
+  // the cache, re-mint once, retry once.
   private async credRead<T>(
     spaceUri: string,
-    nsid: string,
-    call: (headers: { authorization: string; dpop: string }) => Promise<T>,
+    writerDid: string,
+    call: (agent: AtpAgent, headers: Record<string, string>) => Promise<T>,
   ): Promise<T> {
-    const htu = this.endpoint(nsid);
-    const headersFor = async (credential: string) => ({
-      authorization: `DPoP ${credential}`,
-      dpop: await dpopProof(this.keypair, "GET", htu, credential),
-    });
+    const agent = bareAgent(await pdsUrlFor(writerDid));
+    const headersFor = async (c: CachedCredential) =>
+      (
+        await createSpaceSigHeaders({
+          authorization: `Atproto-Space-Credential ${c.credential}`,
+          audience: writerDid as AudienceDid,
+          keypair: c.keypair,
+        })
+      ).headers;
 
-    let credential = await this.credentialFor(spaceUri);
+    let cred = await this.credentialFor(spaceUri);
     try {
-      return await call(await headersFor(credential));
+      return await call(agent, await headersFor(cred));
     } catch (err) {
       if (!isInvalidCredential(err)) throw err;
-      credential = await this.credentialFor(spaceUri, true);
-      return await call(await headersFor(credential));
+      cred = await this.credentialFor(spaceUri, true);
+      return await call(agent, await headersFor(cred));
     }
-  }
-
-  async getRecord(
-    spaceUri: string,
-    repo: string,
-    collection: string,
-    rkey: string,
-  ): Promise<SpaceRecord> {
-    const space = normalizeSpaceUri(spaceUri);
-    const res = await this.credRead(
-      space,
-      "com.atproto.space.getRecord",
-      (headers) =>
-        this.bare.com.atproto.space.getRecord(
-          { space, repo, collection, rkey },
-          { headers },
-        ),
-    );
-    const parts = parseSpaceUri(space);
-    return {
-      uri: formatSpaceRecordUri({ ...parts, writerDid: repo, collection, rkey }),
-      cid: res.data.cid,
-      value: (res.data.value ?? {}) as Record<string, unknown>,
-    };
   }
 
   async listRecords(
@@ -214,11 +215,10 @@ export class SpaceCredentialManager {
   ): Promise<{ records: SpaceRecord[]; cursor?: string }> {
     const space = normalizeSpaceUri(spaceUri);
     const parts = parseSpaceUri(space);
-    const res = await this.credRead(
-      space,
-      "com.atproto.space.listRecords",
-      (headers) =>
-        this.bare.com.atproto.space.listRecords(
+    let res;
+    try {
+      res = await this.credRead(space, repo, (agent, headers) =>
+        agent.com.atproto.space.listRecords(
           {
             space,
             repo,
@@ -228,7 +228,11 @@ export class SpaceCredentialManager {
           },
           { headers },
         ),
-    );
+      );
+    } catch (err) {
+      if (isRepoNotFound(err)) return { records: [] };
+      throw err;
+    }
     return {
       records: res.data.records.map((r) => ({
         uri: formatSpaceRecordUri({
