@@ -45,6 +45,9 @@ export type SpaceKind = "diary" | "watchlist";
 export interface SpaceMember {
   did: string;
   handle: string | null;
+  // The member's grants as the PDS reports them (listMembers).
+  read: boolean;
+  write: boolean;
 }
 
 export interface AppSpace {
@@ -293,7 +296,9 @@ async function listMembersResolved(
       cursor,
       limit: 100,
     });
-    for (const m of res.data.members) members.push({ did: m.did, handle: null });
+    for (const m of res.data.members) {
+      members.push({ did: m.did, handle: null, read: m.read, write: m.write });
+    }
     cursor = res.data.cursor;
   } while (cursor && members.length < 500);
 
