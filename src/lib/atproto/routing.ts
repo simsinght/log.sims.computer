@@ -91,17 +91,17 @@ async function assertSpacesUsable(
         ...errFields(error),
       });
       throw new SpacesUnavailableError(
-        "Couldn't reach your private diary space on your PDS, so nothing was saved. " +
-          "Your diary stays private and is never written to your public repo. " +
-          "Try again in a moment; if it keeps failing, sign out and back in.",
+        "Couldn't reach your private diary space on your PDS. To keep your diary " +
+          "private, tvlog won't fall back to your public repo, so nothing was saved " +
+          "or loaded. Try again in a moment; if it keeps failing, sign out and back in.",
       );
     }
   }
   if (session.spacesUnauthorized) {
     throw new SpacesUnavailableError(
-      "tvlog isn't authorized for your private diary space, so nothing was saved. " +
-        "Sign out and back in with your handle (OAuth) to grant access. " +
-        "App-password sign-in can't use spaces.",
+      "tvlog isn't authorized for your private diary space, so nothing was saved " +
+        "or loaded. Sign out and back in with your handle (OAuth) to grant access; " +
+        "app-password sign-in can't use spaces.",
     );
   }
 }
