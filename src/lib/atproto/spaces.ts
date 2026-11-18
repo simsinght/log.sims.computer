@@ -1,10 +1,11 @@
 /**
  * Space lifecycle + membership for spike-PDS accounts. This slice owns the
  * *existence* of a user's spaces and who can access them — not the watch data
- * inside them (that routes through the write seam in ./write.ts in a later
- * slice). All calls here are self-ops against the user's own PDS with the
- * normal Bearer session, so the delegation-token -> space-credential -> DPoP
- * dance (for cross-member reads) is deliberately absent.
+ * inside them (that routes through the write seam in ./write.ts). All calls
+ * here are self-ops against the user's own PDS with the normal session
+ * (com.atproto.space.* lifecycle, com.atproto.memberspace.* membership), so the
+ * delegation-token -> space-credential dance for cross-member reads lives in
+ * ./space-credentials, not here.
  *
  * Discovery is deterministic: each account has at most one diary space and one
  * shared watchlist space, at fixed (type, skey) conventions, so "does it exist"
@@ -32,11 +33,11 @@ export const WATCHLIST_SPACE: SpaceDef = {
   skey: "watchlist",
 };
 
+// Member-list policy with every flag at its default (no public read/write, no
+// published policy/members) and no `allowedApps`, i.e. any app may read for a
+// member — the 29 Oct equivalent of the old memberListPolicy + open appAccess.
 const MEMBER_LIST_POLICY = {
-  $type: "com.atproto.simplespace.defs#memberListPolicy",
-} as const;
-const OPEN_APP_ACCESS = {
-  $type: "com.atproto.simplespace.defs#open",
+  $type: "com.atproto.memberspace.policy",
 } as const;
 
 export type SpaceKind = "diary" | "watchlist";
@@ -44,6 +45,9 @@ export type SpaceKind = "diary" | "watchlist";
 export interface SpaceMember {
   did: string;
   handle: string | null;
+  // The member's grants as the PDS reports them (listMembers).
+  read: boolean;
+  write: boolean;
 }
 
 export interface AppSpace {
@@ -88,7 +92,11 @@ export function errFields(err: unknown): {
 function isMethodUnsupported(err: unknown): boolean {
   const { status, text } = errText(err);
   if (status === 404 || status === 501) return true;
-  return /methodnotimplemented|not implemented|xrpcnotsupported|not supported|unsupported/.test(
+  // The reference PDS proxies an XRPC method it doesn't implement and, with no
+  // proxy target, answers 400 InvalidRequest "No service configured for <nsid>".
+  // That is a definitive "this host has no such method" (e.g. a PDS on an older
+  // or newer spaces API than this build).
+  return /no service configured for|methodnotimplemented|not implemented|xrpcnotsupported|not supported|unsupported/.test(
     text,
   );
 }
@@ -100,7 +108,9 @@ function isMethodUnsupported(err: unknown): boolean {
 function isScopeError(err: unknown): boolean {
   const { status, text } = errText(err);
   if (status === 403) return true;
-  return /scopemissing|missing required scope|insufficient_?scope|invalid_scope|not permitted for this scope/.test(
+  // "Bad token scope" (InvalidToken) is what the spaces PDS answers a legacy
+  // session whose scope isn't access-full, e.g. an app-password session.
+  return /scopemissing|missing required scope|insufficient_?scope|invalid_scope|not permitted for this scope|bad token scope/.test(
     text,
   );
 }
@@ -161,7 +171,7 @@ export async function detectSpacesCapability(
   ownerDid: string,
 ): Promise<CapabilityResult> {
   try {
-    await agent.com.atproto.simplespace.getSpace({
+    await agent.com.atproto.space.getSpace({
       space: diarySpaceUri(ownerDid),
     });
     return { capable: true, definitive: true };
@@ -192,7 +202,7 @@ function spaceUriFor(ownerDid: string, def: SpaceDef): string {
 
 async function spaceExists(agent: Agent, spaceUri: string): Promise<boolean> {
   try {
-    await agent.com.atproto.simplespace.getSpace({ space: spaceUri });
+    await agent.com.atproto.space.getSpace({ space: spaceUri });
     return true;
   } catch (err) {
     if (isSpaceMissing(err)) return false;
@@ -208,13 +218,12 @@ async function ensureSpace(
   const uri = spaceUriFor(ownerDid, def);
   if (await spaceExists(agent, uri)) return uri;
   try {
-    const res = await agent.com.atproto.simplespace.createSpace({
-      type: def.type,
+    const res = await agent.com.atproto.space.createSpace({
+      spaceType: def.type,
       skey: def.skey,
       policy: MEMBER_LIST_POLICY,
-      appAccess: OPEN_APP_ACCESS,
     });
-    return res.data.uri;
+    return res.data.space;
   } catch (err) {
     // Lost a race with a concurrent ensure — the space now exists, which is
     // exactly the state we wanted.
@@ -264,7 +273,7 @@ export async function spaceMemberDids(
   const dids: string[] = [];
   let cursor: string | undefined;
   do {
-    const res = await agent.com.atproto.simplespace.listMembers({
+    const res = await agent.com.atproto.memberspace.listMembers({
       space: spaceUri,
       cursor,
       limit: 100,
@@ -282,12 +291,14 @@ async function listMembersResolved(
   const members: SpaceMember[] = [];
   let cursor: string | undefined;
   do {
-    const res = await agent.com.atproto.simplespace.listMembers({
+    const res = await agent.com.atproto.memberspace.listMembers({
       space: spaceUri,
       cursor,
       limit: 100,
     });
-    for (const m of res.data.members) members.push({ did: m.did, handle: null });
+    for (const m of res.data.members) {
+      members.push({ did: m.did, handle: null, read: m.read, write: m.write });
+    }
     cursor = res.data.cursor;
   } while (cursor && members.length < 500);
 
@@ -365,13 +376,28 @@ async function resolveMemberDid(
   );
 }
 
+// Members always read. Write follows the space's modality: the diary is
+// single-writer (members only read the owner's repo), the shared watchlist is
+// multi-writer (each member writes into their own space-repo). `write: false`
+// also keeps a diary member out of the writer set.
+function memberWriteFor(spaceUri: string): boolean {
+  try {
+    return parseSpaceUri(spaceUri).type === WATCHLIST_SPACE.type;
+  } catch {
+    return false;
+  }
+}
+
 export async function addSpaceMember(
   agent: Agent,
   spaceUri: string,
   identifier: string,
 ): Promise<{ did: string }> {
   const did = await resolveMemberDid(agent, identifier);
-  await agent.com.atproto.simplespace.addMember({ space: spaceUri, did });
+  await agent.com.atproto.memberspace.putMembers({
+    space: spaceUri,
+    members: [{ did, read: true, write: memberWriteFor(spaceUri) }],
+  });
   return { did };
 }
 
@@ -380,7 +406,10 @@ export async function removeSpaceMember(
   spaceUri: string,
   did: string,
 ): Promise<void> {
-  await agent.com.atproto.simplespace.removeMember({ space: spaceUri, did });
+  await agent.com.atproto.memberspace.removeMembers({
+    space: spaceUri,
+    dids: [did],
+  });
 }
 
 /** True when the space URI is owned by the given DID — mutation guard. */

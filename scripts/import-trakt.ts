@@ -27,6 +27,7 @@ import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { AtpAgent } from "@atproto/api";
 import { makeSource } from "../src/lib/import/source.ts";
+import { isSpacesPdsUrl } from "../src/lib/atproto/spaces-hosts.ts";
 import {
   parseExport,
   reportSideChannels,
@@ -163,6 +164,13 @@ async function run(): Promise<void> {
     const id = await resolveIdentity(handle);
     did = id.did;
     console.log(`\nAccount: ${handle} (${did}) @ ${id.pdsUrl}`);
+    // The CLI has no spaces routing: it would write a spaces account's private
+    // diary into its public repo. The web importer routes it to the diary space.
+    if (isSpacesPdsUrl(id.pdsUrl)) {
+      throw new Error(
+        "This account is on a spaces PDS; the CLI would write its diary to the public repo. Use the web importer (Settings > Import) instead.",
+      );
+    }
     agent = new AtpAgent({ service: id.pdsUrl });
     await agent.login({ identifier: handle, password });
   } else if (!args.dryRun) {

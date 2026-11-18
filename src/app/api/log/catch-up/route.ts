@@ -160,6 +160,10 @@ export async function POST(request: NextRequest) {
       return entry;
     });
 
+    // Resolve routing before any write: for an allowlisted spaces account whose
+    // spaces can't be confirmed this throws, so nothing is written at all.
+    const routing = await resolveRouting(agent, await getSession());
+
     const subject = await upsertListItem(agent, did, {
       tmdbId,
       mediaType: "tv",
@@ -182,7 +186,6 @@ export async function POST(request: NextRequest) {
       episode: c.episode,
     }));
 
-    const routing = await resolveRouting(agent, await getSession());
     const added = await createWatches(agent, did, inputs, routing.diary);
     return NextResponse.json({ added, first, last });
   } catch (err) {

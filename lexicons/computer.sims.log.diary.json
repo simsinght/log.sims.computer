@@ -5,7 +5,7 @@
     "main": {
       "type": "space",
       "key": "literal:diary",
-      "name": "tvlog diary",
+      "title": "tvlog diary",
       "description": "Your private watch diary — tags, notes, and mood.",
       "collections": ["computer.sims.log.watch"]
     }

@@ -3,6 +3,7 @@ import { Agent } from "@atproto/api";
 import { getOAuthClient, resolveClientTagFromState } from "@/lib/atproto/oauth";
 import { resolveIdentity } from "@/lib/atproto/identity";
 import { initSpacesForSession } from "@/lib/atproto/spaces";
+import { isSpacesPdsUrl } from "@/lib/atproto/spaces-hosts";
 import { getSession } from "@/lib/session";
 import { BASE_URL } from "@/config/baseUrl";
 
@@ -21,8 +22,9 @@ export async function GET(request: NextRequest) {
     const did = oauthSession.did;
 
     let handle: string | null = null;
+    let pdsUrl: string | null = null;
     try {
-      handle = (await resolveIdentity(did)).handle;
+      ({ handle, pdsUrl } = await resolveIdentity(did));
     } catch {
       handle = null;
     }
@@ -37,6 +39,9 @@ export async function GET(request: NextRequest) {
     // accounts or survive a re-login through the spaces client.
     session.spacesCapable = undefined;
     session.spacesUnauthorized = undefined;
+    // Allowlisted spaces host (by the resolved PDS, or by the login route having
+    // picked the spaces client for it): routing fails closed for this account.
+    session.spacesExpected = tag === "spaces" || isSpacesPdsUrl(pdsUrl);
     await initSpacesForSession(new Agent(oauthSession), session);
     await session.save();
 

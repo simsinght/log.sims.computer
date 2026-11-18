@@ -11,6 +11,7 @@ import {
   PUBLIC_REPO,
   createRecord as writeCreate,
   listRecords as seamListRecords,
+  type WriteDestination,
 } from "../atproto/write.ts";
 
 export const LIST_COLLECTION = "social.popfeed.feed.list";
@@ -53,11 +54,12 @@ export async function listAllRecords(
   agent: Agent,
   did: string,
   collection: string,
+  dest: WriteDestination = PUBLIC_REPO,
 ): Promise<RepoRecord[]> {
   const out: RepoRecord[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < 500; page++) {
-    const res = await seamListRecords(agent, PUBLIC_REPO, {
+    const res = await seamListRecords(agent, dest, {
       repo: did,
       collection,
       limit: 100,

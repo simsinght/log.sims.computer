@@ -13,9 +13,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@atproto/api": "0.0.0-spaces-alpha-20260818163953",
-    "@atproto/xrpc": "0.0.0-spaces-alpha-20260818163953",
+    "@atproto/api": "0.0.0-spaces-alpha-20261113224550",
+    "@atproto/crypto": "0.0.0-spaces-alpha-20261113224550",
     "@atproto/oauth-client-node": "^0.4.9",
+    "@atproto/space": "0.0.0-spaces-alpha-20261113224550",
+    "@atproto/xrpc": "0.0.0-spaces-alpha-20261113224550",
     "iron-session": "^8.0.4",
     "next": "^15.5.29",
     "react": "^19.0.0",

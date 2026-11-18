@@ -131,8 +131,8 @@ export async function POST(request: NextRequest) {
   const action = typeof body.action === "string" ? body.action : "";
   const space = typeof body.space === "string" ? body.space : "";
 
-  // Every mutation targets a space owned by the signed-in user. addMember /
-  // removeMember would fail NotSpaceOwner server-side anyway; rejecting up front
+  // Every mutation targets a space owned by the signed-in user. putMembers /
+  // removeMembers would fail NotAuthorized server-side anyway; rejecting up front
   // keeps the error clear.
   if (action !== "createWatchlist" && !isOwnedBy(space, agent.did)) {
     return NextResponse.json(

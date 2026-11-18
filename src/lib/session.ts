@@ -23,6 +23,12 @@ export interface AppSession {
   // scope (an old transition:generic token on a spaces PDS). The UI prompts the
   // user to sign out and back in to pick up the spaces client's grants.
   spacesUnauthorized?: boolean;
+  // Whether this account's PDS host is on the spaces allowlist
+  // (./atproto/spaces-hosts), set at sign-in. Such an account's diary is
+  // private by design, so routing fails closed for it: if spaces can't be
+  // confirmed, diary operations error rather than fall back to the public repo.
+  // False/undefined (bsky.social etc.) keeps the plain public behaviour.
+  spacesExpected?: boolean;
 }
 
 const DEV_SECRET = "dev-only-insecure-session-secret-change-me";
