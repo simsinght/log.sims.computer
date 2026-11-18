@@ -1,6 +1,7 @@
 import { AtpAgent } from "@atproto/api";
 import { resolveIdentity } from "@/lib/atproto/identity";
 import { initSpacesForSession } from "@/lib/atproto/spaces";
+import { isSpacesPdsUrl } from "@/lib/atproto/spaces-hosts";
 import { getSession } from "@/lib/session";
 
 export async function establishPasswordSession(
@@ -24,6 +25,8 @@ export async function establishPasswordSession(
   // Drop any capability cached under a previous identity on this cookie before
   // re-probing, so a stale flag can never cross accounts.
   session.spacesCapable = undefined;
+  session.spacesUnauthorized = undefined;
+  session.spacesExpected = isSpacesPdsUrl(pdsUrl);
   await initSpacesForSession(agent, session);
   await session.save();
 

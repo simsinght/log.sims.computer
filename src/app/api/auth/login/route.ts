@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOAuthClient, type OAuthClientTag } from "@/lib/atproto/oauth";
 import { resolveIdentity } from "@/lib/atproto/identity";
+import { isSpacesHost } from "@/lib/atproto/spaces-hosts";
 import { BASE_URL } from "@/config/baseUrl";
 
 export const runtime = "nodejs";
 
-// PDS hosts known to speak com.atproto.space.* — routed to the spaces client.
-// Everything else — bsky.social included — gets the legacy client, so its
-// transition:generic scope stays untouched. Extend without a rebuild via
-// SPACES_PDS_HOSTS (comma-separated hostnames).
+// PDS hosts known to speak com.atproto.space.* (the allowlist in
+// @/lib/atproto/spaces-hosts) are routed to the spaces client. Everything else
+// — bsky.social included — gets the legacy client, so its transition:generic
+// scope stays untouched.
 //
 // This is an allowlist on purpose. An unauthenticated capability probe used to
 // live here (401/403 = method exists, 404/501 = unknown method), but mainline
@@ -16,15 +17,6 @@ export const runtime = "nodejs";
 // method also answers 401 and the probe classified every bsky.social account as
 // spaces-capable. Capability is only knowable with a token, which the callback's
 // detectSpacesCapability handles.
-const SPACES_HOSTS = new Set(
-  [
-    "pds.sims.computer",
-    "spaces-alpha.host.bsky.network",
-    ...(process.env.SPACES_PDS_HOSTS ?? "").split(","),
-  ]
-    .map((h) => h.trim().toLowerCase())
-    .filter(Boolean),
-);
 
 // Resolve the target account's PDS host, then choose the client: an allowlisted
 // spaces host gets the spaces client; everything else gets the legacy client.
@@ -44,7 +36,7 @@ async function chooseClientTag(identifier: string): Promise<OAuthClientTag> {
     }
   }
   if (!pdsHost) return "default";
-  return SPACES_HOSTS.has(pdsHost.toLowerCase()) ? "spaces" : "default";
+  return isSpacesHost(pdsHost) ? "spaces" : "default";
 }
 
 function loginError(code: string): NextResponse {
