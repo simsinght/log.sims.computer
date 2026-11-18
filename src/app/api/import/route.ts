@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { getAuthedAgent } from "@/lib/atproto/agent";
+import { resolveRouting } from "@/lib/atproto/routing";
+import { getSession } from "@/lib/session";
 import { makeSource } from "@/lib/import/source";
 import { parseExport } from "@/lib/import/parse";
 import { computePlan } from "@/lib/import/importer";
@@ -95,7 +97,12 @@ export async function POST(request: NextRequest) {
     const entries = source.listEntries();
     const parsed = parseExport(source, entries);
 
-    const plan = await computePlan(agent, did, parsed);
+    // Diary records follow the account's routing (its diary space on a spaces
+    // PDS, failing closed there); the Popfeed shelf stays public.
+    const routing = await resolveRouting(agent, await getSession());
+    const plan = await computePlan(agent, did, parsed, {
+      diary: routing.diary,
+    });
 
     // Background write phase; the request returns immediately with the summary.
     runJobInBackground(job, agent, did, plan);

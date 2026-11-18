@@ -31,6 +31,7 @@ import {
   putRecord as writePut,
   applyWritesCreate,
   type BatchCreate,
+  type WriteDestination,
 } from "../atproto/write.ts";
 import {
   LIST_ITEM_COLLECTION,
@@ -76,11 +77,18 @@ export interface ImportPlan {
   existingLists: RepoRecord[];
   watchlistToCreate: WatchlistEntry[];
   counts: ImportCounts;
+  // Where the diary (computer.sims.log.watch) records live: read for
+  // idempotency here and written to by executeImport. The Popfeed shelf
+  // (lists/listItems) always stays on the public repo.
+  diary: WriteDestination;
 }
 
 export interface ComputePlanOptions {
   prefetch?: boolean;
   log?: Logger;
+  // Diary destination from resolveRouting (the diary space for spaces
+  // accounts). Defaults to the public repo.
+  diary?: WriteDestination;
 }
 
 const noop: Logger = () => {};
@@ -92,6 +100,7 @@ export async function computePlan(
   opts: ComputePlanOptions = {},
 ): Promise<ImportPlan> {
   const log = opts.log ?? noop;
+  const diary = opts.diary ?? PUBLIC_REPO;
   const { events, works, rewatchFlags, watchlistEntries } = parsed;
 
   let existingItems: RepoRecord[] = [];
@@ -101,7 +110,7 @@ export async function computePlan(
     log("Reading existing records for idempotency...");
     existingItems = await listAllRecords(agent, did, LIST_ITEM_COLLECTION);
     existingLists = await listAllRecords(agent, did, LIST_COLLECTION);
-    const watches = await listAllRecords(agent, did, WATCH_COLLECTION);
+    const watches = await listAllRecords(agent, did, WATCH_COLLECTION, diary);
     for (const w of watches) existingWatchKeys.add(watchKey(w.value));
     log(
       `  existing: ${existingItems.length} listItems, ${watches.length} watch records`,
@@ -185,6 +194,7 @@ export async function computePlan(
     existingLists,
     watchlistToCreate,
     counts,
+    diary,
   };
 }
 
@@ -374,7 +384,7 @@ export async function executeImport(
     try {
       await withRateLimit(
         () =>
-          applyWritesCreate(agent, PUBLIC_REPO, {
+          applyWritesCreate(agent, plan.diary, {
             repo: did,
             validate: false,
             creates: batch,
