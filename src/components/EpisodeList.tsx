@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import LogDialog, { LogTarget } from "@/components/LogDialog";
 import EpisodeArt from "@/components/EpisodeArt";
 import { LogControl, episodeKey } from "@/components/WatchedMarkers";
-import { airDateLabel } from "@/lib/format";
+import { episodeMetaLabel } from "@/lib/format";
 import { episodeHref } from "@/lib/routes";
 import type { EpisodeRef } from "@/lib/nextEpisode";
 
@@ -14,13 +14,15 @@ export interface EpisodeRow {
   episodeNumber: number;
   name: string;
   airDate: string | null;
+  // Minutes, from the season listing; null when TMDB has none.
+  runtime: number | null;
   stillUrl: string | null;
 }
 
 /**
  * One season's episodes as rows: a still thumbnail, number, title and air
- * date linking to the episode page, plus the Log / Watched control on the
- * right (outside the link). Used by the season page and, for a show with a
+ * date · runtime linking to the episode page, plus the Log / Watched control
+ * on the right (outside the link). Used by the season page and, for a show with a
  * single season, inline on the show page. Owns the log sheet, with the same
  * in-place flip + refresh the old expandable season list had.
  */
@@ -102,8 +104,8 @@ export default function EpisodeList({
                     </span>
                     {ep.name}
                   </span>
-                  <span className="mt-0.5 block text-xs text-gray-500">
-                    {airDateLabel(ep.airDate, today)}
+                  <span className="mt-0.5 block truncate text-xs text-gray-500">
+                    {episodeMetaLabel(ep.airDate, ep.runtime, today)}
                   </span>
                 </span>
               </Link>

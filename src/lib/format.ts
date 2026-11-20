@@ -26,3 +26,16 @@ export function formatRuntime(minutes: number | null): string | null {
   const m = minutes % 60;
   return m ? `${h} h ${m} min` : `${h} h`;
 }
+
+// An episode row's dim line: "Jun 18, 2025 · 24 min", the same parts as the
+// episode page. Without an air date it is just the runtime ("24 min"); with
+// neither it falls back to airDateLabel's "Air date TBA".
+export function episodeMetaLabel(
+  airDate: string | null,
+  runtime: number | null,
+  today: string,
+): string {
+  const length = formatRuntime(runtime);
+  if (!formatAirDate(airDate) && length) return length;
+  return [airDateLabel(airDate, today), length].filter(Boolean).join(" · ");
+}

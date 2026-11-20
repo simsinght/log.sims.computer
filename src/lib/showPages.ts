@@ -18,6 +18,7 @@ export function episodeRows(episodes: TmdbEpisode[]): EpisodeRow[] {
     episodeNumber: e.episodeNumber,
     name: e.name,
     airDate: e.airDate,
+    runtime: e.runtime,
     stillUrl: tmdbImageUrl(e.stillPath, ROW_STILL_SIZE),
   }));
 }

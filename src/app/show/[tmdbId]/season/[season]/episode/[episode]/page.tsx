@@ -173,44 +173,53 @@ export default async function EpisodePage({
         />
 
         <div className="px-4 sm:px-0">
-          <p className="mt-4 truncate text-sm text-gray-400">
-            <Link
-              href={showHref(show.tmdbId)}
-              prefetch={false}
-              className="transition-colors hover:text-white"
-            >
-              {show.title}
-            </Link>
-            <span className="text-gray-600"> · </span>
-            <Link
-              href={seasonHref(show.tmdbId, seasonNumber)}
-              prefetch={false}
-              className="transition-colors hover:text-white"
-            >
-              {season.name}
-            </Link>
-          </p>
-          <h1 className="mt-1 text-xl font-bold leading-tight tracking-tight sm:text-2xl">
-            <span className="text-gray-500">{label} · </span>
-            {name}
-          </h1>
-          {meta && <p className="mt-1 text-sm text-gray-500">{meta}</p>}
-
-          {state.signedIn && (
-            <div className="mt-4">
-              <EpisodeActions
-                tmdbId={show.tmdbId}
-                title={show.title}
-                year={show.year}
-                season={seasonNumber}
-                episode={episodeNumber}
-                episodeName={episode.name}
-                airDate={episode.airDate}
-                watched={state.watched}
-                seasonEpisodeCounts={seasonEpisodeCounts(show.seasons)}
-              />
+          {/* Breadcrumb, title and date/runtime as one block, with the Log
+              control centred against it on the right rather than on a row of
+              its own. */}
+          <div className="mt-4 flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              {/* Narrower beside the Log control, so a long show title is
+                  what truncates; the season name always stays readable. */}
+              <p className="flex min-w-0 text-sm text-gray-400">
+                <Link
+                  href={showHref(show.tmdbId)}
+                  prefetch={false}
+                  className="truncate transition-colors hover:text-white"
+                >
+                  {show.title}
+                </Link>
+                <span className="shrink-0 whitespace-pre text-gray-600"> · </span>
+                <Link
+                  href={seasonHref(show.tmdbId, seasonNumber)}
+                  prefetch={false}
+                  className="max-w-[70%] shrink-0 truncate transition-colors hover:text-white"
+                >
+                  {season.name}
+                </Link>
+              </p>
+              <h1 className="mt-1 break-words text-xl font-bold leading-tight tracking-tight sm:text-2xl">
+                <span className="text-gray-500">{label} · </span>
+                {name}
+              </h1>
+              {meta && <p className="mt-1 text-sm text-gray-500">{meta}</p>}
             </div>
-          )}
+
+            {state.signedIn && (
+              <div className="shrink-0">
+                <EpisodeActions
+                  tmdbId={show.tmdbId}
+                  title={show.title}
+                  year={show.year}
+                  season={seasonNumber}
+                  episode={episodeNumber}
+                  episodeName={episode.name}
+                  airDate={episode.airDate}
+                  watched={state.watched}
+                  seasonEpisodeCounts={seasonEpisodeCounts(show.seasons)}
+                />
+              </div>
+            )}
+          </div>
 
           {/* Straight under the title/Log control: below the people lists it
               sat a long scroll down on a phone. */}
