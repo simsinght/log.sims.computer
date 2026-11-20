@@ -20,9 +20,9 @@ All in `src/lib/tmdb.ts`: module-level `Map`s (title, work detail, show detail, 
 |---|---|---|---|
 | Landing (logged out) | 0 | 0 | cookie read only |
 | Home (signed in) | **8** (7-page listItem scan + 1 one-page watch read) | 24–48 season → **0** | scans are the latency floor; the home is the watching grid only — the Recent/diary section (and its own `listWatches` + ≤100 title lookups) was dropped, so `getWatching`'s single `listWatches` is the whole watch read |
-| Show page | **7** (full listItem scan to resolve ONE show's state) | 2 (+1 for a one-season show) → 0 | show detail + `aggregate_credits` (top 15 kept); a one-season show also fetches that season for its inline episode list |
+| Show page | **7** (full listItem scan to resolve ONE show's state) | 2 (+1 for a one-season show) → 0 | show detail + `aggregate_credits` (top 15 cast + top 20 crew kept; creators come from the show detail); a one-season show also fetches that season for its inline episode list |
 | Season page | **7** (same scan) | 1–2 → 0 | show detail + the season (shared cache with the home's next-episode walk) |
-| Episode page | **7** (same scan) | 1–3 → 0 | show detail + season (existence, prev/next) + the episode with `credits`; from a home card only the episode call is cold |
+| Episode page | **7** (same scan) | 1–3 → 0 | show detail + season (existence, prev/next) + the episode with `credits` (guest stars, cast and crew all from that one response); from a home card only the episode call is cold |
 | Search | 0 | 1 per debounced query, **uncached** | repeated/backspaced queries re-hit TMDB |
 | Watchlist page | **7** (full scan, filtered) | 0 | display fields denormalized on records |
 | Settings | 0 | 0 | renders from session cookie by design |
