@@ -59,3 +59,79 @@ body {
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   backdrop-filter: blur(20px) saturate(180%);
 }
+
+/*
+ * Full-screen search (/search). The view is fixed to the layout viewport, but
+ * its top/bottom follow the visual viewport (`--vv-top` / `--kb`, set from
+ * JS) so the bottom search bar rides just above the iOS keyboard. Results
+ * scroll underneath the floating bar and show through its glass.
+ */
+.search-view {
+  --bar-height: 52px;
+  /* Gap under the bar: clear the home indicator; just a sliver over the
+     keyboard (no safe area to clear there). */
+  --bar-gap: max(env(safe-area-inset-bottom), 12px);
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: var(--vv-top, 0px);
+  bottom: var(--kb, 0px);
+}
+.search-view[data-keyboard] {
+  --bar-gap: 8px;
+}
+.search-results {
+  padding-top: calc(env(safe-area-inset-top) + 16px);
+  /* Room for the last row to scroll fully clear of the bar. */
+  padding-bottom: calc(var(--bar-height) + var(--bar-gap) + 24px);
+  -webkit-overflow-scrolling: touch;
+}
+.search-bar {
+  bottom: var(--bar-gap);
+}
+/* The one glass surface with real content behind it: a darker tint than the
+   default .glass so the query stays legible over bright posters. */
+.search-bar .glass {
+  background-color: rgb(28 28 30 / 0.55);
+}
+.search-fade {
+  height: calc(var(--bar-height) + var(--bar-gap) + 28px);
+  background: linear-gradient(
+    to top,
+    rgb(10 10 10 / 0.8) 0%,
+    rgb(10 10 10 / 0.55) 55%,
+    rgb(10 10 10 / 0) 100%
+  );
+}
+/* Only our clear button: hide WebKit's own cancel "x" and search decoration. */
+.search-input {
+  -webkit-appearance: none;
+  appearance: none;
+}
+.search-input::-webkit-search-cancel-button,
+.search-input::-webkit-search-decoration,
+.search-input::-webkit-search-results-button,
+.search-input::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .search-view {
+    animation: search-view-in 160ms ease-out;
+  }
+  .search-bar {
+    animation: search-bar-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+}
+@keyframes search-view-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes search-bar-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}

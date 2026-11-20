@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import BackLink, { useHistoryBack } from "@/components/BackLink";
+import BackLink from "@/components/BackLink";
 
 function ProfileMenu() {
   const [open, setOpen] = useState(false);
@@ -95,32 +95,6 @@ function ProfileMenu() {
   );
 }
 
-function CloseSearchButton() {
-  const onClose = useHistoryBack();
-
-  return (
-    <button
-      type="button"
-      onClick={onClose}
-      aria-label="Close search"
-      className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-700 bg-[#141414] text-gray-300 transition-colors hover:border-gray-500 hover:text-white"
-    >
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-5 w-5"
-        aria-hidden="true"
-      >
-        <path d="M18 6 6 18M6 6l12 12" />
-      </svg>
-    </button>
-  );
-}
-
 function searchHref(query: string): string {
   return query ? `/search?q=${encodeURIComponent(query)}` : "/search";
 }
@@ -147,21 +121,17 @@ export default function AppHeader() {
     setQuery(adopted);
   }, [pathname]);
 
-  useEffect(() => {
-    if (onSearchPage) inputRef.current?.focus();
-  }, [onSearchPage]);
-
   const go = useCallback(
     (next: string) => {
       // Only an edit the user made since the last navigation moves the URL;
       // without this, going back out of /search with the field still focused
-      // would immediately push the unchanged query forward again.
+      // would immediately push the unchanged query forward again. /search
+      // owns its own field (bottom bar), so this one only opens it.
       if (next === navigated.current) return;
       navigated.current = next;
-      if (onSearchPage) router.replace(searchHref(next));
-      else if (next) router.push(searchHref(next));
+      if (next) router.push(searchHref(next));
     },
-    [onSearchPage, router]
+    [router]
   );
 
   useEffect(() => {
@@ -175,30 +145,31 @@ export default function AppHeader() {
     go(query.trim());
   }
 
+  // Search is a full-screen view with its own bottom search bar.
+  if (onSearchPage) return null;
+
   return (
     <header className="sticky top-0 z-40 border-b border-gray-900 bg-[#0a0a0a]/95 backdrop-blur">
       <div className="container mx-auto flex h-14 max-w-3xl items-center gap-3 px-4">
-        {!onSearchPage && (
-          <div className="flex shrink-0 items-center">
-            {showsBack ? (
-              <BackLink />
-            ) : (
-              <Link
-                href="/"
-                className="text-lg font-bold tracking-tight transition-colors hover:text-white"
-              >
-                tvlog
-              </Link>
-            )}
-          </div>
-        )}
+        <div className="flex shrink-0 items-center">
+          {showsBack ? (
+            <BackLink />
+          ) : (
+            <Link
+              href="/"
+              className="text-lg font-bold tracking-tight transition-colors hover:text-white"
+            >
+              tvlog
+            </Link>
+          )}
+        </div>
 
         <div className="flex min-w-0 flex-1 justify-end">
           {showsSearchInput && (
             <form
               onSubmit={onSubmit}
               role="search"
-              className={`min-w-0 ${onSearchPage ? "flex w-full" : "hidden sm:flex"}`}
+              className="hidden min-w-0 sm:flex"
             >
               <input
                 ref={inputRef}
@@ -207,16 +178,14 @@ export default function AppHeader() {
                 onChange={(e) => setQuery(e.target.value)}
                 aria-label="Search"
                 placeholder="Search shows"
-                className={`h-9 min-w-0 rounded-full border border-gray-800 bg-[#141414] px-4 text-base placeholder-gray-600 outline-none transition-colors focus:border-gray-600 sm:text-sm ${
-                  onSearchPage ? "w-full" : "w-full sm:w-56"
-                }`}
+                className="h-9 w-full min-w-0 rounded-full border border-gray-800 bg-[#141414] px-4 text-base placeholder-gray-600 outline-none transition-colors focus:border-gray-600 sm:w-56 sm:text-sm"
               />
             </form>
           )}
         </div>
 
         <div className="flex shrink-0 items-center">
-          {onSearchPage ? <CloseSearchButton /> : <ProfileMenu />}
+          <ProfileMenu />
         </div>
       </div>
     </header>
