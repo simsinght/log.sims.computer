@@ -59,7 +59,8 @@ export function LogControl({
   onClick: () => void;
   large?: boolean;
 }) {
-  const size = large ? "px-4 py-2 text-sm" : "px-3 py-1 text-xs";
+  // The large (episode page) pill is a full 44px touch target.
+  const size = large ? "min-h-[44px] px-5 text-sm" : "px-3 py-1 text-xs";
   return (
     <button
       type="button"
@@ -67,7 +68,7 @@ export function LogControl({
       aria-label={isWatched ? `Log again ${label}` : `Log ${label}`}
       className={
         isWatched
-          ? `flex shrink-0 items-center gap-1 rounded-full border border-green-900/70 bg-green-950/40 font-medium text-green-300 transition-colors hover:border-green-700 hover:text-green-200 ${large ? "px-4 py-2 text-sm" : "px-2.5 py-1 text-xs"}`
+          ? `flex shrink-0 items-center gap-1 rounded-full border border-green-900/70 bg-green-950/40 font-medium text-green-300 transition-colors hover:border-green-700 hover:text-green-200 ${large ? "min-h-[44px] px-4 text-sm" : "px-2.5 py-1 text-xs"}`
           : `shrink-0 rounded-full bg-white font-semibold text-black transition-colors hover:bg-gray-200 ${size}`
       }
     >
