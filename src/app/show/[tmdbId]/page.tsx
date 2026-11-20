@@ -21,6 +21,7 @@ import {
   seasonEpisodeCounts,
   todayIso,
 } from "@/lib/showPages";
+import { requireAgent } from "@/lib/requireAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,9 @@ export default async function ShowPage({
 }: {
   params: Promise<{ tmdbId: string }>;
 }) {
+  // Signed-in only (middleware redirects first; this also catches a cookie
+  // whose OAuth session was wiped by a restart).
+  await requireAgent();
   const { tmdbId: raw } = await params;
   const tmdbId = parseRouteInt(raw, 1);
   if (tmdbId === null || !isConfigured()) notFound();

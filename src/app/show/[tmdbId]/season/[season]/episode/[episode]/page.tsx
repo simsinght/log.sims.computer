@@ -25,6 +25,7 @@ import {
 import { seasonEpisodeCounts, todayIso } from "@/lib/showPages";
 import { airDateLabel, formatRuntime } from "@/lib/format";
 import type { EpisodeRef } from "@/lib/nextEpisode";
+import { requireAgent } from "@/lib/requireAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,9 @@ export default async function EpisodePage({
 }: {
   params: Promise<{ tmdbId: string; season: string; episode: string }>;
 }) {
+  // Signed-in only (middleware redirects first; this also catches a cookie
+  // whose OAuth session was wiped by a restart).
+  await requireAgent();
   const p = await params;
   const tmdbId = parseRouteInt(p.tmdbId, 1);
   const seasonNumber = parseRouteInt(p.season, 0);

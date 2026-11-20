@@ -64,8 +64,9 @@ export default function AppChrome({ signedIn }: { signedIn: boolean }) {
     return () => mq.removeEventListener("change", update);
   }, []);
 
-  const hasFab =
-    signedIn && isPhone && pathname !== "/search" && pathname !== "/settings";
+  // Search lives on the home screen only: elsewhere the floating button sat
+  // over page content (e.g. the show page's Cast/Crew control).
+  const hasFab = signedIn && isPhone && pathname === "/";
 
   return (
     <>

@@ -317,7 +317,15 @@ export async function getShowDetail(id: number): Promise<ShowDetail> {
   const backdropPath = raw.backdrop_path ?? null;
 
   const seasons: TmdbSeasonSummary[] = (raw.seasons ?? [])
-    .filter((s) => typeof s.season_number === "number")
+    // TMDB lists an announced-but-empty season (episode_count 0, air_date
+    // null — e.g. Adults' "Season 3" after a renewal) alongside the real ones.
+    // Drop it here so every consumer (season list, one-season inline rule,
+    // prev/next navigation, watched counts, the home's next-episode walk) sees
+    // the same seasons, and its direct URL 404s. A season with episodes but no
+    // or a future air date still counts.
+    .filter(
+      (s) => typeof s.season_number === "number" && (s.episode_count ?? 0) > 0,
+    )
     .map((s) => ({
       seasonNumber: s.season_number as number,
       name: s.name ?? `Season ${s.season_number}`,

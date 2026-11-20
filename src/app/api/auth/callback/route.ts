@@ -6,6 +6,7 @@ import { initSpacesForSession } from "@/lib/atproto/spaces";
 import { isSpacesPdsUrl } from "@/lib/atproto/spaces-hosts";
 import { getSession } from "@/lib/session";
 import { BASE_URL } from "@/config/baseUrl";
+import { NEXT_COOKIE, safeNextPath } from "@/lib/authGate";
 
 export const runtime = "nodejs";
 
@@ -45,7 +46,11 @@ export async function GET(request: NextRequest) {
     await initSpacesForSession(new Agent(oauthSession), session);
     await session.save();
 
-    return NextResponse.redirect(new URL("/", BASE_URL), { status: 302 });
+    // Back to where the auth gate sent us from (same-origin path only).
+    const next = safeNextPath(request.cookies.get(NEXT_COOKIE)?.value) ?? "/";
+    const res = NextResponse.redirect(new URL(next, BASE_URL), { status: 302 });
+    res.cookies.delete({ name: NEXT_COOKIE, path: "/api/auth/" });
+    return res;
   } catch (err) {
     const e = err as { status?: number; error?: string; message?: string };
     console.error("[callback] oauth callback failed", {

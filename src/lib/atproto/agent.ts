@@ -1,9 +1,13 @@
+import { cache } from "react";
 import { Agent, AtpAgent } from "@atproto/api";
 import { getSession } from "@/lib/session";
 import { getOAuthClient } from "@/lib/atproto/oauth";
 import { errFields } from "@/lib/atproto/spaces";
 
-export async function getAuthedAgent(): Promise<Agent | null> {
+// Memoised per server render (React cache): a page guard and the page body
+// share one restore instead of resuming the session twice. Outside a render
+// (route handlers) it is a plain call.
+export const getAuthedAgent = cache(async function getAuthedAgent(): Promise<Agent | null> {
   const session = await getSession();
   if (!session.did) return null;
 
@@ -37,4 +41,4 @@ export async function getAuthedAgent(): Promise<Agent | null> {
   }
 
   return null;
-}
+});
