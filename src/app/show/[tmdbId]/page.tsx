@@ -2,17 +2,17 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import {
   getSeasonEpisodes,
-  getShowCast,
+  getShowCredits,
   getShowDetail,
   isConfigured,
   type TmdbEpisode,
-  type TmdbPerson,
+  type ShowCredits,
 } from "@/lib/tmdb";
 import { errFields } from "@/lib/atproto/spaces";
 import WatchlistButton from "@/components/WatchlistButton";
 import SeasonList from "@/components/SeasonList";
 import EpisodeList from "@/components/EpisodeList";
-import CastList from "@/components/CastList";
+import PeopleRow from "@/components/PeopleRow";
 import { getShowWatchState } from "@/lib/showState";
 import { parseRouteInt } from "@/lib/routes";
 import {
@@ -50,14 +50,14 @@ export default async function ShowPage({
 
   // The account state, the cast and (for a one-season show) the episodes are
   // independent; none of them may take the page down.
-  const [state, cast, inlineEpisodes] = await Promise.all([
+  const [state, credits, inlineEpisodes] = await Promise.all([
     getShowWatchState(tmdbId, "show"),
-    getShowCast(tmdbId).catch((err): TmdbPerson[] => {
-      console.error("[show] cast failed; rendering without it", {
+    getShowCredits(tmdbId, show.creators).catch((err): ShowCredits => {
+      console.error("[show] credits failed; rendering without them", {
         tmdbId,
         ...errFields(err),
       });
-      return [];
+      return { cast: [], crew: [] };
     }),
     onlySeason
       ? getSeasonEpisodes(tmdbId, onlySeason.seasonNumber).catch(
@@ -172,7 +172,13 @@ export default async function ShowPage({
           </section>
         )}
 
-        <CastList heading="Cast" people={cast} id="show-cast" />
+        <PeopleRow
+          idPrefix="show-people"
+          groups={[
+            { id: "cast", label: "Cast", people: credits.cast },
+            { id: "crew", label: "Crew", people: credits.crew },
+          ]}
+        />
       </div>
     </div>
   );

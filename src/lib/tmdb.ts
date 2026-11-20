@@ -288,6 +288,8 @@ export interface ShowDetail {
   posterPath: string | null;
   backdropPath: string | null;
   seasons: TmdbSeasonSummary[];
+  // TMDB's created_by, which arrives with the show detail at no extra cost.
+  creators: { id: number; name: string; profilePath: string | null }[];
 }
 
 interface TmdbSeasonRaw {
@@ -301,6 +303,7 @@ interface TmdbSeasonRaw {
 interface TmdbShowRaw extends TmdbDetailRaw {
   overview?: string;
   seasons?: TmdbSeasonRaw[];
+  created_by?: { id?: number; name?: string; profile_path?: string | null }[];
 }
 
 const showDetailCache = new Map<number, ShowDetail>();
@@ -343,6 +346,13 @@ export async function getShowDetail(id: number): Promise<ShowDetail> {
     posterPath,
     backdropPath,
     seasons,
+    creators: (raw.created_by ?? [])
+      .filter((c) => typeof c.id === "number" && c.name)
+      .map((c) => ({
+        id: c.id as number,
+        name: c.name as string,
+        profilePath: c.profile_path ?? null,
+      })),
   };
   showDetailCache.set(id, detail);
   return detail;
@@ -439,9 +449,10 @@ export async function getEpisodeTmdbId(
 export interface TmdbPerson {
   id: number;
   name: string;
-  character: string;
+  // The line under the name: the character(s) for cast, the job(s) for crew.
+  role: string;
   profileUrl: string | null;
-  // Show-level cast only: episodes this person appears in across the series.
+  // Show-level credits only: episodes this person is credited on.
   episodeCount?: number;
 }
 
@@ -453,7 +464,17 @@ interface TmdbCastRaw {
   order?: number;
 }
 
-const PROFILE_SIZE = "w185";
+interface TmdbCrewRaw {
+  id?: number;
+  name?: string;
+  job?: string;
+  department?: string;
+  profile_path?: string | null;
+}
+
+// Person cards are ~96 CSS px wide; w185 is soft on a 3x phone, so the
+// optimizer gets the h632 rendition (~421px wide) to downscale from.
+const PROFILE_SIZE = "h632";
 
 function normalizePeople(raw: TmdbCastRaw[] | undefined): TmdbPerson[] {
   return (raw ?? [])
@@ -461,22 +482,140 @@ function normalizePeople(raw: TmdbCastRaw[] | undefined): TmdbPerson[] {
     .map((p) => ({
       id: p.id as number,
       name: p.name as string,
-      character: p.character ?? "",
+      role: p.character ?? "",
       profileUrl: tmdbImageUrl(p.profile_path, PROFILE_SIZE),
+    }));
+}
+
+// Crew are ranked by their most prominent job: who made it first (creators,
+// directors, writers, producers), then the department heads, then everyone
+// else by department. Ranking by department alone puts a show's assistant
+// directors ahead of its writers.
+const KEY_JOBS: string[][] = [
+  ["Creator"],
+  ["Showrunner"],
+  ["Director"],
+  ["Writer", "Teleplay", "Screenplay", "Story", "Novel", "Characters"],
+  ["Executive Producer"],
+  ["Co-Executive Producer", "Producer"],
+  ["Director of Photography", "Original Music Composer", "Music"],
+  ["Editor", "Casting", "Production Design"],
+];
+const JOB_RANK = new Map(
+  KEY_JOBS.flatMap((jobs, rank) => jobs.map((j) => [j, rank] as const)),
+);
+const DEPARTMENTS = [
+  "Directing",
+  "Writing",
+  "Production",
+  "Camera",
+  "Editing",
+  "Sound",
+  "Art",
+  "Costume & Make-Up",
+  "Visual Effects",
+  "Lighting",
+  "Crew",
+];
+function jobRank(job: string, department: string | undefined): number {
+  const key = JOB_RANK.get(job);
+  if (key !== undefined) return key;
+  const d = department ? DEPARTMENTS.indexOf(department) : -1;
+  return KEY_JOBS.length + (d === -1 ? DEPARTMENTS.length : d);
+}
+
+export const CREW_LIMIT = 20;
+const CREW_PER_TIER = 6;
+
+interface CrewCredit {
+  id: number;
+  name: string;
+  profilePath: string | null | undefined;
+  department: string | undefined;
+  jobs: string[];
+  episodeCount?: number;
+}
+
+/**
+ * Collapses per-job crew credits into one card per person (TMDB lists a
+ * writer-director twice), ordered by their most prominent job, then by
+ * episode count when known, then by TMDB's order; capped at CREW_PER_TIER per
+ * key job tier and CREW_LIMIT overall. The
+ * role line lists their jobs most prominent first.
+ */
+function rankCrew(credits: CrewCredit[]): TmdbPerson[] {
+  const byId = new Map<
+    number,
+    { first: number; rank: number; jobs: { job: string; rank: number }[]; c: CrewCredit; episodes: number }
+  >();
+  credits.forEach((c, i) => {
+    const jobs = c.jobs.map((job) => ({ job, rank: jobRank(job, c.department) }));
+    const rank = Math.min(...jobs.map((j) => j.rank), jobRank("", c.department));
+    const entry = byId.get(c.id);
+    if (!entry) {
+      byId.set(c.id, {
+        first: i,
+        rank,
+        jobs,
+        c,
+        episodes: c.episodeCount ?? 0,
+      });
+      return;
+    }
+    entry.rank = Math.min(entry.rank, rank);
+    entry.episodes = Math.max(entry.episodes, c.episodeCount ?? 0);
+    for (const job of jobs) {
+      if (!entry.jobs.some((j) => j.job === job.job)) entry.jobs.push(job);
+    }
+  });
+  return [...byId.values()]
+    .sort(
+      (a, b) => a.rank - b.rank || b.episodes - a.episodes || a.first - b.first,
+    )
+    // At most a handful per key tier, so a long-running show's dozens of
+    // directors don't push its writers and producers out of the row.
+    .filter(
+      (e, _, all) =>
+        e.rank >= KEY_JOBS.length ||
+        all.filter((o) => o.rank === e.rank).indexOf(e) < CREW_PER_TIER,
+    )
+    .slice(0, CREW_LIMIT)
+    .map(({ c, jobs, episodes }) => ({
+      id: c.id,
+      name: c.name,
+      // Stable sort: equally ranked jobs keep their given order.
+      role: [...jobs].sort((a, b) => a.rank - b.rank).map((j) => j.job).join(", "),
+      profileUrl: tmdbImageUrl(c.profilePath, PROFILE_SIZE),
+      ...(episodes ? { episodeCount: episodes } : {}),
     }));
 }
 
 export interface EpisodeDetail extends TmdbEpisode {
   // Guest stars in TMDB's billing order, then the season regulars credited on
-  // this episode. TMDB returns the same guest list at the top level and under
-  // credits.guest_stars; the top-level one is used.
+  // this episode, then the episode's crew (directors and writers first). TMDB
+  // returns the same guest list and crew at the top level and under
+  // credits.*; the top-level ones are used.
   guestStars: TmdbPerson[];
   cast: TmdbPerson[];
+  crew: TmdbPerson[];
 }
 
 interface TmdbEpisodeDetailRaw extends TmdbEpisodeRaw {
   guest_stars?: TmdbCastRaw[];
+  crew?: TmdbCrewRaw[];
   credits?: { cast?: TmdbCastRaw[] };
+}
+
+function crewCredits(raw: TmdbCrewRaw[] | undefined): CrewCredit[] {
+  return (raw ?? [])
+    .filter((p) => typeof p.id === "number" && p.name)
+    .map((p) => ({
+      id: p.id as number,
+      name: p.name as string,
+      profilePath: p.profile_path,
+      department: p.department,
+      jobs: p.job ? [p.job] : [],
+    }));
 }
 
 const episodeDetailCache = new Map<string, EpisodeDetail>();
@@ -498,6 +637,7 @@ export async function getEpisodeDetail(
     ...normalizeEpisode({ ...raw, episode_number: raw.episode_number ?? episode }),
     guestStars: normalizePeople(raw.guest_stars),
     cast: normalizePeople(raw.credits?.cast),
+    crew: rankCrew(crewCredits(raw.crew)),
   };
   episodeDetailCache.set(cacheKey, detail);
   episodeIdCache.set(cacheKey, detail.tmdbId);
@@ -509,27 +649,42 @@ interface TmdbAggregateCastRaw extends TmdbCastRaw {
   roles?: { character?: string; episode_count?: number }[];
 }
 
+interface TmdbAggregateCrewRaw extends TmdbCrewRaw {
+  total_episode_count?: number;
+  jobs?: { job?: string; episode_count?: number }[];
+}
+
+export interface ShowCredits {
+  cast: TmdbPerson[];
+  crew: TmdbPerson[];
+}
+
 // Series regulars only — aggregate_credits lists everyone who ever appeared
-// (hundreds of people, ~0.5 MB for a long-running show); only the head of the
-// list is kept in memory.
+// (hundreds of people, ~0.5 MB for a long-running show); only the head of
+// each list is kept in memory.
 const SHOW_CAST_LIMIT = 15;
-const showCastCache = new Map<number, TmdbPerson[]>();
+const showCreditsCache = new Map<number, ShowCredits>();
 
 /**
- * Show-level cast from aggregate_credits (every season, with episode counts),
- * not /credits — /credits reflects only the latest season, so it drops
- * regulars who left (Stranger Things loses Natalia Dyer and Joe Keery) and is
- * short for long shows (The Simpsons: 6 people). Kept in TMDB's order, which
- * is by episode count — its per-person `order` field mixes billing indices
- * from different seasons and would rank one-off guests above recurring cast.
+ * Show-level cast and crew from aggregate_credits (every season, with episode
+ * counts), not /credits — /credits reflects only the latest season, so it
+ * drops regulars who left (Stranger Things loses Natalia Dyer and Joe Keery)
+ * and is short for long shows (The Simpsons: 6 people). Cast is kept in
+ * TMDB's order, which is by episode count — its per-person `order` field
+ * mixes billing indices from different seasons and would rank one-off guests
+ * above recurring cast. The show's creators (from the show detail, already
+ * fetched) lead the crew.
  */
-export async function getShowCast(showId: number): Promise<TmdbPerson[]> {
-  const cached = showCastCache.get(showId);
+export async function getShowCredits(
+  showId: number,
+  creators: { id: number; name: string; profilePath: string | null }[] = [],
+): Promise<ShowCredits> {
+  const cached = showCreditsCache.get(showId);
   if (cached) return cached;
 
   const raw = (await tmdbDetailJson(
     `/tv/${showId}/aggregate_credits`,
-  )) as { cast?: TmdbAggregateCastRaw[] };
+  )) as { cast?: TmdbAggregateCastRaw[]; crew?: TmdbAggregateCrewRaw[] };
   const cast = (raw.cast ?? [])
     .filter((p) => typeof p.id === "number" && p.name)
     .slice(0, SHOW_CAST_LIMIT)
@@ -541,13 +696,37 @@ export async function getShowCast(showId: number): Promise<TmdbPerson[]> {
       return {
         id: p.id as number,
         name: p.name as string,
-        character: role?.character ?? "",
+        role: role?.character ?? "",
         profileUrl: tmdbImageUrl(p.profile_path, PROFILE_SIZE),
         episodeCount: p.total_episode_count,
       };
     });
-  showCastCache.set(showId, cast);
-  return cast;
+  const crew = rankCrew([
+    ...creators.map((c) => ({
+      id: c.id,
+      name: c.name,
+      profilePath: c.profilePath,
+      department: "Creator",
+      jobs: ["Creator"],
+    })),
+    ...(raw.crew ?? [])
+      .filter((p) => typeof p.id === "number" && p.name)
+      .map((p) => ({
+        id: p.id as number,
+        name: p.name as string,
+        profilePath: p.profile_path,
+        department: p.department,
+        // A person's jobs within the department, most episodes first.
+        jobs: [...(p.jobs ?? [])]
+          .sort((a, b) => (b.episode_count ?? 0) - (a.episode_count ?? 0))
+          .map((j) => j.job)
+          .filter((j): j is string => !!j),
+        episodeCount: p.total_episode_count,
+      })),
+  ]);
+  const credits = { cast, crew };
+  showCreditsCache.set(showId, credits);
+  return credits;
 }
 
 export async function fetchPosterJpeg(

@@ -12,7 +12,7 @@ import {
 import { errFields } from "@/lib/atproto/spaces";
 import EpisodeArt from "@/components/EpisodeArt";
 import EpisodeActions from "@/components/EpisodeActions";
-import CastList from "@/components/CastList";
+import PeopleRow from "@/components/PeopleRow";
 import { getShowWatchState } from "@/lib/showState";
 import { adjacentEpisodes } from "@/lib/episodeNav";
 import {
@@ -208,15 +208,14 @@ export default async function EpisodePage({
           )}
 
           {detail ? (
-            <>
-              <CastList
-                heading="Guest stars"
-                people={detail.guestStars}
-                id="guest-stars"
-                emptyText="No guest stars listed for this episode."
-              />
-              <CastList heading="Cast" people={detail.cast} id="episode-cast" />
-            </>
+            <PeopleRow
+              idPrefix="episode-people"
+              groups={[
+                { id: "guests", label: "Guest stars", people: detail.guestStars },
+                { id: "cast", label: "Cast", people: detail.cast },
+                { id: "crew", label: "Crew", people: detail.crew },
+              ]}
+            />
           ) : (
             <p className="mt-8 text-sm text-gray-500">
               Couldn&apos;t load the cast for this episode.
