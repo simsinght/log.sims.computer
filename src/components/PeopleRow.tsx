@@ -128,8 +128,19 @@ export default function PeopleRow({
           <div
             role="tablist"
             aria-label={label}
-            className="mb-3 flex gap-1 rounded-lg border border-gray-800 bg-[#0a0a0a] p-1"
+            className="glass relative mb-3 flex rounded-full p-1"
           >
+            {/* The selected-segment thumb: one capsule that slides between
+                the equal-width segments (decorative; aria-selected carries
+                the state). */}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute bottom-1 left-1 top-1 rounded-full bg-white/[0.2] shadow-[0_2px_6px_rgb(0_0_0/0.45),inset_0_1px_0_rgb(255_255_255/0.28),inset_0_0_0_0.5px_rgb(255_255_255/0.14)] transition-transform duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none"
+              style={{
+                width: `calc((100% - 0.5rem) / ${visible.length})`,
+                transform: `translateX(${visible.indexOf(selected) * 100}%)`,
+              }}
+            />
             {visible.map((g, i) => {
               const active = g.id === selected.id;
               return (
@@ -146,15 +157,15 @@ export default function PeopleRow({
                   tabIndex={active ? 0 : -1}
                   onClick={() => setSelectedId(g.id)}
                   onKeyDown={(e) => onKeyDown(e, i)}
-                  className={`flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
+                  className={`relative flex min-h-11 min-w-0 flex-1 basis-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-2 text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 motion-reduce:transition-none ${
                     active
-                      ? "bg-white text-black"
-                      : "text-gray-400 hover:text-gray-200"
+                      ? "text-white"
+                      : "text-white/55 [@media(hover:hover)]:hover:text-white/80"
                   }`}
                 >
                   {g.label}
                   <span
-                    className={`text-xs font-normal ${active ? "text-gray-500" : "text-gray-600"}`}
+                    className={`text-xs font-normal tabular-nums ${active ? "text-white/65" : "text-white/35"}`}
                   >
                     {g.people.length}
                   </span>

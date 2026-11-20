@@ -42,3 +42,20 @@ body {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/*
+ * Apple-style "glass" surface for small controls on the dark UI: a faint
+ * translucent fill, hairline translucent border and a top-edge highlight,
+ * blurring/saturating whatever sits behind it. Legibility never depends on
+ * the blur (the page behind is mostly flat near-black). Keep it to small
+ * controls, not repeated items: backdrop-filter costs GPU per element.
+ */
+.glass {
+  background-color: rgb(255 255 255 / 0.07);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 1px 2px rgb(0 0 0 / 0.3);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+}
