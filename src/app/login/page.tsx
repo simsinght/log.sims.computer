@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { safeNextPath } from "@/lib/authGate";
 
 const ERROR_MESSAGES: Record<string, string> = {
   oauth: "Sign-in didn't complete. Please try again.",
@@ -15,6 +16,8 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const errorCode = searchParams.get("error");
   const oauthError = errorCode ? ERROR_MESSAGES[errorCode] : null;
+  // Where to land after sign-in (set by the auth gate); same-origin paths only.
+  const next = safeNextPath(searchParams.get("next"));
 
   const [oauthHandle, setOauthHandle] = useState("");
   const [pwHandle, setPwHandle] = useState("");
@@ -36,7 +39,7 @@ function LoginForm() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? "Login failed");
       }
-      window.location.href = "/";
+      window.location.href = next ?? "/";
     } catch (err) {
       setPwError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -71,6 +74,7 @@ function LoginForm() {
           method="get"
           className="flex flex-col gap-3"
         >
+          {next && <input type="hidden" name="next" value={next} />}
           <label htmlFor="oauth-handle" className="text-sm text-gray-400">
             Handle, DID, or PDS URL
           </label>

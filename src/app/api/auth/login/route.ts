@@ -3,6 +3,7 @@ import { getOAuthClient, type OAuthClientTag } from "@/lib/atproto/oauth";
 import { resolveIdentity } from "@/lib/atproto/identity";
 import { isSpacesHost } from "@/lib/atproto/spaces-hosts";
 import { BASE_URL } from "@/config/baseUrl";
+import { NEXT_COOKIE, safeNextPath } from "@/lib/authGate";
 
 export const runtime = "nodejs";
 
@@ -62,7 +63,7 @@ function identifierShape(identifier: string): { shape: string; host?: string } {
 // Accepts a handle (you.bsky.social / sim.pds.sims.computer), a DID
 // (did:plc:… / did:web:…), or a PDS/entryway URL (https://pds.sims.computer).
 // The oauth client's authorize() resolves all three shapes itself.
-async function startLogin(identifier: string | null) {
+async function startLogin(identifier: string | null, next: string | null) {
   if (!identifier || !identifier.trim()) {
     return loginError("missing");
   }
@@ -75,7 +76,23 @@ async function startLogin(identifier: string | null) {
     // client tag is recorded by this client's wrapped state store (nonce -> tag)
     // and recovered in the callback. See ./oauth-store.
     const url = await client.authorize(value);
-    return NextResponse.redirect(url, { status: 302 });
+    const res = NextResponse.redirect(url, { status: 302 });
+    // Return path for the callback, parked in a short-lived cookie rather than
+    // the OAuth state. Validated here and again in the callback; cleared when
+    // absent so a stale one can't redirect a later sign-in.
+    const safeNext = safeNextPath(next);
+    if (safeNext) {
+      res.cookies.set(NEXT_COOKIE, safeNext, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/api/auth/",
+        maxAge: 600,
+      });
+    } else {
+      res.cookies.delete({ name: NEXT_COOKIE, path: "/api/auth/" });
+    }
+    return res;
   } catch (err) {
     const e = err as { status?: number; error?: string; message?: string };
     console.error("[login] authorize failed", {
@@ -89,20 +106,24 @@ async function startLogin(identifier: string | null) {
 }
 
 export async function GET(request: NextRequest) {
-  const identifier = new URL(request.url).searchParams.get("handle");
-  return startLogin(identifier);
+  const params = new URL(request.url).searchParams;
+  return startLogin(params.get("handle"), params.get("next"));
 }
 
 export async function POST(request: NextRequest) {
   let identifier: string | null = null;
+  let next: string | null = null;
   const contentType = request.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     const body = await request.json().catch(() => ({}));
     identifier = typeof body.handle === "string" ? body.handle : null;
+    next = typeof body.next === "string" ? body.next : null;
   } else {
     const form = await request.formData();
     const value = form.get("handle");
     identifier = typeof value === "string" ? value : null;
+    const nextValue = form.get("next");
+    next = typeof nextValue === "string" ? nextValue : null;
   }
-  return startLogin(identifier);
+  return startLogin(identifier, next);
 }

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
-import { getIronSession, type IronSession, type SessionOptions } from "iron-session";
+import { getIronSession, type IronSession } from "iron-session";
+import { sessionOptions } from "@/lib/sessionOptions";
 import type { AtpSessionData } from "@atproto/api";
 import type { OAuthClientTag } from "@/lib/atproto/oauth";
 
@@ -31,24 +32,7 @@ export interface AppSession {
   spacesExpected?: boolean;
 }
 
-const DEV_SECRET = "dev-only-insecure-session-secret-change-me";
-
-function sessionPassword(): string {
-  const secret = process.env.SESSION_SECRET;
-  if (secret && secret.length >= 32) return secret;
-  return DEV_SECRET;
-}
-
-export const sessionOptions: SessionOptions = {
-  cookieName: "log_sims_session",
-  password: sessionPassword(),
-  cookieOptions: {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-  },
-};
+export { sessionOptions } from "@/lib/sessionOptions";
 
 export async function getSession(): Promise<IronSession<AppSession>> {
   const cookieStore = await cookies();

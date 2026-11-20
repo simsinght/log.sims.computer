@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiUnauthorized } from "@/lib/requireAuth";
 import { isConfigured, search, TmdbError } from "@/lib/tmdb";
 
 export async function GET(request: NextRequest) {
+  // Signed-in only (middleware gates first): not an open TMDB proxy.
+  const denied = await apiUnauthorized();
+  if (denied) return denied;
   if (!isConfigured()) {
     return NextResponse.json(
       { error: "TMDB_API_KEY not configured" },

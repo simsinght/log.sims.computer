@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { getAuthedAgent } from "@/lib/atproto/agent";
+import { requireAgent } from "@/lib/requireAuth";
 import { getSession } from "@/lib/session";
 import { resolveRouting } from "@/lib/atproto/routing";
 import { errFields } from "@/lib/atproto/spaces";
@@ -8,31 +7,9 @@ import SocialFeed from "@/components/SocialFeed";
 
 export const dynamic = "force-dynamic";
 
-function SignInPrompt() {
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-[#0a0a0a] px-6 text-center text-[#ededed]">
-      <h1 className="text-2xl font-semibold tracking-tight">
-        Sign in for your feed
-      </h1>
-      <p className="mt-2 text-gray-400">
-        Your diary and watch parties are available once you sign in.
-      </p>
-      <Link
-        href="/login"
-        className="mt-8 rounded-full bg-white px-8 py-3 text-base font-semibold text-black transition-colors hover:bg-gray-200"
-      >
-        Sign in
-      </Link>
-    </div>
-  );
-}
-
 export default async function SocialPage() {
+  const agent = await requireAgent();
   const session = await getSession();
-  if (!session.did) return <SignInPrompt />;
-
-  const agent = await getAuthedAgent();
-  if (!agent || !agent.did) return <SignInPrompt />;
 
   let entries: DiaryEntry[] = [];
   try {

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getAuthedAgent } from "@/lib/atproto/agent";
 import { getSession } from "@/lib/session";
 import { resolveRouting } from "@/lib/atproto/routing";
@@ -27,8 +28,10 @@ export default async function Home() {
   const session = await getSession();
   if (!session.did) return <Landing />;
 
-  const agent = await getAuthedAgent();
-  if (!agent || !agent.did) return <Landing />;
+  // A cookie the server can no longer back (OAuth store wiped by a restart):
+  // clear it and go to sign-in, rather than a landing page under a stale header.
+  const agent = await getAuthedAgent().catch(() => null);
+  if (!agent || !agent.did) redirect("/api/auth/expired");
 
   let watching: WatchingResult = { shows: [], inProgressCount: 0 };
   try {
