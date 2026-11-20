@@ -12,7 +12,8 @@ import {
 import { errFields } from "@/lib/atproto/spaces";
 import EpisodeArt from "@/components/EpisodeArt";
 import EpisodeActions from "@/components/EpisodeActions";
-import CastList from "@/components/CastList";
+import PeopleRow from "@/components/PeopleRow";
+import ClampedText from "@/components/ClampedText";
 import { getShowWatchState } from "@/lib/showState";
 import { adjacentEpisodes } from "@/lib/episodeNav";
 import {
@@ -207,31 +208,25 @@ export default async function EpisodePage({
             </div>
           )}
 
+          {/* Straight under the title/Log control: below the people lists it
+              sat a long scroll down on a phone. */}
+          {episode.overview && (
+            <ClampedText text={episode.overview} className="mt-4" />
+          )}
+
           {detail ? (
-            <>
-              <CastList
-                heading="Guest stars"
-                people={detail.guestStars}
-                id="guest-stars"
-                emptyText="No guest stars listed for this episode."
-              />
-              <CastList heading="Cast" people={detail.cast} id="episode-cast" />
-            </>
+            <PeopleRow
+              idPrefix="episode-people"
+              groups={[
+                { id: "guests", label: "Guest stars", people: detail.guestStars },
+                { id: "cast", label: "Cast", people: detail.cast },
+                { id: "crew", label: "Crew", people: detail.crew },
+              ]}
+            />
           ) : (
             <p className="mt-8 text-sm text-gray-500">
               Couldn&apos;t load the cast for this episode.
             </p>
-          )}
-
-          {episode.overview && (
-            <section className="mt-8">
-              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                Overview
-              </h2>
-              <p className="text-sm leading-relaxed text-gray-300">
-                {episode.overview}
-              </p>
-            </section>
           )}
 
           {(prev || next) && (

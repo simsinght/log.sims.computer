@@ -34,3 +34,11 @@ body {
     font-size: 16px !important;
   }
 }
+
+/* Horizontal rows (people cards) scroll natively but without a scrollbar. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
