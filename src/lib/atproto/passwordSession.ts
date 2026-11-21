@@ -3,6 +3,7 @@ import { resolveIdentity } from "@/lib/atproto/identity";
 import { initSpacesForSession } from "@/lib/atproto/spaces";
 import { isSpacesPdsUrl } from "@/lib/atproto/spaces-hosts";
 import { getSession } from "@/lib/session";
+import { savePasswordSession } from "@/lib/atproto/passwordTokens";
 
 export async function establishPasswordSession(
   handle: string,
@@ -15,6 +16,9 @@ export async function establishPasswordSession(
   if (!agent.session) {
     throw new Error("Login did not establish a session");
   }
+
+  // A fresh sign-in supersedes any tokens kept from an earlier one.
+  savePasswordSession(agent.session);
 
   const session = await getSession();
   session.did = agent.session.did;

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { getOAuthClient } from "@/lib/atproto/oauth";
+import { forgetPasswordSession } from "@/lib/atproto/passwordTokens";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,12 @@ export async function POST() {
     }
   }
 
+  if (session.method === "app_password" && session.did) {
+    forgetPasswordSession(session.did);
+  }
+
+  // Only the session cookie: the device's remembered account (localStorage,
+  // see @/lib/rememberedAccounts) is kept so /login can offer "Continue as".
   session.destroy();
   return NextResponse.json({ ok: true });
 }
