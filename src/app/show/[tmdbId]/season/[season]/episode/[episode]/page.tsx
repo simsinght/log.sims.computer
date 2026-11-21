@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -14,6 +15,7 @@ import EpisodeArt from "@/components/EpisodeArt";
 import EpisodeActions from "@/components/EpisodeActions";
 import PeopleRow from "@/components/PeopleRow";
 import ClampedText from "@/components/ClampedText";
+import { EpisodeNote } from "@/components/ShowNotes";
 import { getShowWatchState } from "@/lib/showState";
 import { adjacentEpisodes } from "@/lib/episodeNav";
 import {
@@ -225,6 +227,18 @@ export default async function EpisodePage({
               sat a long scroll down on a phone. */}
           {episode.overview && (
             <ClampedText text={episode.overview} className="mt-4" />
+          )}
+
+          {/* Your own note(s) on this episode, under TMDB's synopsis and above
+              the cast; streams in (the first read builds the diary index). */}
+          {state.signedIn && (
+            <Suspense fallback={null}>
+              <EpisodeNote
+                tmdbId={show.tmdbId}
+                season={seasonNumber}
+                episode={episodeNumber}
+              />
+            </Suspense>
           )}
 
           {detail ? (

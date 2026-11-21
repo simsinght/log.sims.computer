@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import {
@@ -13,6 +14,7 @@ import WatchlistButton from "@/components/WatchlistButton";
 import SeasonList from "@/components/SeasonList";
 import EpisodeList from "@/components/EpisodeList";
 import PeopleRow from "@/components/PeopleRow";
+import { ShowNotes } from "@/components/ShowNotes";
 import { getShowWatchState } from "@/lib/showState";
 import { parseRouteInt } from "@/lib/routes";
 import {
@@ -183,6 +185,11 @@ export default async function ShowPage({
             { id: "crew", label: "Crew", people: credits.crew },
           ]}
         />
+
+        {/* Streams in after the page: the first read builds the diary index. */}
+        <Suspense fallback={null}>
+          <ShowNotes tmdbId={show.tmdbId} />
+        </Suspense>
       </div>
     </div>
   );

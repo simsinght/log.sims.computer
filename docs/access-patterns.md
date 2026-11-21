@@ -23,6 +23,7 @@ All in `src/lib/tmdb.ts`: module-level `Map`s (title, work detail, show detail, 
 | Show page | **7** (full listItem scan to resolve ONE show's state) | 2 (+1 for a one-season show) → 0 | show detail + `aggregate_credits` (top 15 cast + top 20 crew kept; creators come from the show detail); a one-season show also fetches that season for its inline episode list |
 | Season page | **7** (same scan) | 1–2 → 0 | show detail + the season (shared cache with the home's next-episode walk) |
 | Episode page | **7** (same scan) | 1–3 → 0 | show detail + season (existence, prev/next) + the episode with `credits` (guest stars, cast and crew all from that one response); from a home card only the episode call is cold |
+| Notes (show / season / episode pages) | **0 warm**; a **full diary scan** cold (56 pages on the reference account) | 0 (+1 cached season listing per noted season on the show page) | `src/lib/watchIndex.ts`: per-DID in-memory index of TV episode watches, built once, written through by `POST /api/log` and `PUT /api/log/note`, dropped by catch-up and import, refreshed in the background after 15 min. Streams behind `<Suspense>` so a cold build never delays the page |
 | Search | 0 | 1 per debounced query, **uncached** | repeated/backspaced queries re-hit TMDB |
 | Watchlist page | **7** (full scan, filtered) | 0 | display fields denormalized on records |
 | Settings | 0 | 0 | renders from session cookie by design |

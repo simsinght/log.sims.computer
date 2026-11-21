@@ -211,6 +211,50 @@ export async function listRecords(
   };
 }
 
+// Self-read of ONE record from the caller's own repo (public or space), for a
+// read-modify-write such as editing a diary note. Null when the record doesn't
+// exist; any other failure throws.
+export async function getRecord(
+  agent: Agent,
+  dest: WriteDestination,
+  params: { repo: string; collection: string; rkey: string },
+): Promise<SeamRecord | null> {
+  try {
+    if (dest.kind === "space") {
+      const spaceUri = normalizeSpaceUri(dest.spaceUri);
+      const res = await agent.com.atproto.space.getRecord({
+        space: spaceUri,
+        repo: params.repo,
+        collection: params.collection,
+        rkey: params.rkey,
+      });
+      return {
+        uri: formatSpaceRecordUri({
+          ...parseSpaceUri(spaceUri),
+          writerDid: params.repo,
+          collection: params.collection,
+          rkey: params.rkey,
+        }),
+        cid: res.data.cid,
+        value: (res.data.value ?? {}) as Record<string, unknown>,
+      };
+    }
+    const res = await agent.com.atproto.repo.getRecord({
+      repo: params.repo,
+      collection: params.collection,
+      rkey: params.rkey,
+    });
+    return {
+      uri: res.data.uri,
+      cid: res.data.cid ?? "",
+      value: res.data.value as Record<string, unknown>,
+    };
+  } catch (err) {
+    if ((err as { error?: unknown })?.error === "RecordNotFound") return null;
+    throw err;
+  }
+}
+
 function reshape(data: {
   uri: string;
   cid: string;

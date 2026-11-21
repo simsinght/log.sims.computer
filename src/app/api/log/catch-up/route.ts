@@ -10,6 +10,7 @@ import {
   type WatchedEpisode,
 } from "@/lib/atproto/records";
 import { getSeasonEpisodes, getShowDetail } from "@/lib/tmdb";
+import { invalidateWatchIndex } from "@/lib/watchIndex";
 
 export const runtime = "nodejs";
 
@@ -186,7 +187,13 @@ export async function POST(request: NextRequest) {
       episode: c.episode,
     }));
 
-    const added = await createWatches(agent, did, inputs, routing.diary);
+    let added: number;
+    try {
+      added = await createWatches(agent, did, inputs, routing.diary);
+    } finally {
+      // Even a partial backfill wrote records the Notes index doesn't hold.
+      invalidateWatchIndex(did);
+    }
     return NextResponse.json({ added, first, last });
   } catch (err) {
     const message = err instanceof Error ? err.message : "PDS write failed";
