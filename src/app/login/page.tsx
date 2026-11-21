@@ -24,9 +24,9 @@ function AccountAvatar({ account }: { account: RememberedAccount }) {
       <img
         src={account.avatarData}
         alt=""
-        width={40}
-        height={40}
-        className="h-10 w-10 shrink-0 rounded-full bg-gray-800 object-cover"
+        width={64}
+        height={64}
+        className="h-16 w-16 shrink-0 rounded-full bg-gray-800 object-cover"
       />
     );
   }
@@ -34,31 +34,34 @@ function AccountAvatar({ account }: { account: RememberedAccount }) {
   return (
     <span
       aria-hidden="true"
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-700 bg-[#1c1c1c] text-base font-semibold uppercase text-gray-300"
+      className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-gray-700 bg-[#1c1c1c] text-2xl font-semibold uppercase text-gray-300"
     >
       {initial || "?"}
     </span>
   );
 }
 
-// One remembered account: the row starts sign-in for it, the × forgets it on
-// this device. OAuth accounts submit the same GET /api/auth/login form as the
-// handle field (with `next`); app-password accounts open the password form
-// with the identifier filled in.
-function RememberedAccountRow({
+// One remembered account, as a tile: the profile picture with the handle under
+// it. Tapping starts sign-in (OAuth accounts submit the same GET
+// /api/auth/login form as the handle field, with `next`; app-password accounts
+// open the password form with the identifier filled in). In edit mode the tile
+// forgets the account on this device instead.
+function RememberedAccountTile({
   account,
   next,
+  editing,
   onPassword,
   onForget,
 }: {
   account: RememberedAccount;
   next: string | null;
+  editing: boolean;
   onPassword: (handle: string) => void;
   onForget: (did: string) => void;
 }) {
   const [pending, setPending] = useState(false);
   // Coming back from the authorize page via Back restores this page from the
-  // back/forward cache with the row still "Signing in…"; reset it.
+  // back/forward cache with the tile still pending; reset it.
   useEffect(() => {
     const reset = (e: PageTransitionEvent) => {
       if (e.persisted) setPending(false);
@@ -66,40 +69,66 @@ function RememberedAccountRow({
     window.addEventListener("pageshow", reset);
     return () => window.removeEventListener("pageshow", reset);
   }, []);
-  const subtitle =
-    account.method === "app_password"
-      ? "App password"
-      : account.displayName && account.displayName !== account.handle
-        ? account.displayName
-        : null;
   const body = (
     <>
-      <AccountAvatar account={account} />
-      <span className="min-w-0 flex-1 text-left">
-        <span className="block truncate text-base font-medium text-gray-100">
-          {pending ? "Signing in…" : `Continue as ${account.handle}`}
-        </span>
-        {subtitle && (
-          <span className="block truncate text-xs text-gray-500">{subtitle}</span>
+      <span className="relative">
+        <AccountAvatar account={account} />
+        {editing && (
+          <span
+            aria-hidden="true"
+            className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full border border-gray-600 bg-[#2a2a2a] text-gray-200"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              className="h-3 w-3"
+            >
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </span>
         )}
+      </span>
+      <span className="line-clamp-2 block w-full break-all text-center text-[13px] leading-tight text-gray-200">
+        {pending ? "Signing in…" : account.handle}
       </span>
     </>
   );
-  const rowButton =
-    "flex min-h-[64px] min-w-0 flex-1 items-center gap-3 rounded-l-lg px-4 py-3 transition-colors hover:bg-[#1c1c1c] disabled:opacity-60";
+  const tile =
+    "flex w-28 flex-col items-center gap-2 rounded-xl py-2 transition-opacity active:opacity-70 disabled:opacity-60";
 
+  if (editing) {
+    return (
+      <li>
+        <button
+          type="button"
+          onClick={() => onForget(account.did)}
+          aria-label={`Forget ${account.handle} on this device`}
+          className={tile}
+        >
+          {body}
+        </button>
+      </li>
+    );
+  }
   return (
-    <li className="flex items-stretch rounded-lg border border-gray-700 bg-[#141414]">
+    <li>
       {account.method === "oauth" ? (
         <form
           action="/api/auth/login"
           method="get"
-          className="flex min-w-0 flex-1"
           onSubmit={() => setPending(true)}
         >
           <input type="hidden" name="handle" value={account.handle} />
           {next && <input type="hidden" name="next" value={next} />}
-          <button type="submit" disabled={pending} className={rowButton}>
+          <button
+            type="submit"
+            disabled={pending}
+            aria-label={`Continue as ${account.handle}`}
+            className={tile}
+          >
             {body}
           </button>
         </form>
@@ -107,30 +136,12 @@ function RememberedAccountRow({
         <button
           type="button"
           onClick={() => onPassword(account.handle)}
-          className={rowButton}
+          aria-label={`Continue as ${account.handle}`}
+          className={tile}
         >
           {body}
         </button>
       )}
-      <button
-        type="button"
-        onClick={() => onForget(account.did)}
-        aria-label={`Forget ${account.handle} on this device`}
-        title="Forget on this device"
-        className="flex w-12 shrink-0 items-center justify-center rounded-r-lg border-l border-gray-800 text-gray-500 transition-colors hover:bg-[#1c1c1c] hover:text-gray-200"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          className="h-4 w-4"
-          aria-hidden="true"
-        >
-          <path d="M6 6l12 12M18 6L6 18" />
-        </svg>
-      </button>
     </li>
   );
 }
@@ -152,6 +163,7 @@ function LoginForm() {
   const pwSectionRef = useRef<HTMLDetailsElement>(null);
   // Read after mount (localStorage isn't there during the server render).
   const [accounts, setAccounts] = useState<RememberedAccount[]>([]);
+  const [editingAccounts, setEditingAccounts] = useState(false);
   useEffect(() => {
     setAccounts(readRememberedAccounts());
   }, []);
@@ -213,15 +225,28 @@ function LoginForm() {
 
         {accounts.length > 0 && (
           <section aria-labelledby="remembered-heading" className="mb-8">
-            <h2 id="remembered-heading" className="sr-only">
-              Accounts on this device
-            </h2>
-            <ul className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <h2
+                id="remembered-heading"
+                className="text-sm font-medium text-gray-400"
+              >
+                {editingAccounts ? "Remove from this device" : "Continue as"}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setEditingAccounts((v) => !v)}
+                className="-mr-3 flex min-h-11 items-center px-3 text-sm text-gray-500 transition-colors hover:text-gray-200"
+              >
+                {editingAccounts ? "Done" : "Edit"}
+              </button>
+            </div>
+            <ul className="-mx-1 mt-1 flex flex-wrap gap-x-2 gap-y-3">
               {accounts.map((account) => (
-                <RememberedAccountRow
+                <RememberedAccountTile
                   key={account.did}
                   account={account}
                   next={next}
+                  editing={editingAccounts}
                   onPassword={continueWithPassword}
                   onForget={(did) => setAccounts(forgetAccount(did))}
                 />
