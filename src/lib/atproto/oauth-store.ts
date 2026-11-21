@@ -25,9 +25,20 @@ import type {
 
 export type OAuthClientTag = "default" | "spaces";
 
+// The slice of Map the session store needs, so a durable (file-backed) map
+// from @/lib/durableStore can stand in for a plain Map.
+export interface SessionBackend {
+  get(key: string): NodeSavedSession | undefined;
+  set(key: string, value: NodeSavedSession): unknown;
+  delete(key: string): unknown;
+}
+
 interface OAuthStoreGlobals {
+  // In memory on purpose: an entry only spans one login round trip.
   stateStore?: Map<string, NodeSavedState>;
-  sessionStore?: Map<string, NodeSavedSession>;
+  // Keyed by DID. In memory unless setSessionBackend() installed a durable map
+  // (see ../atproto/oauth.ts) — that is what lets a sign-in outlive a restart.
+  sessionStore?: SessionBackend;
   nonceTags?: Map<string, OAuthClientTag>;
 }
 
@@ -40,8 +51,17 @@ const stores = globalRef.__atprotoOAuthStore;
 function stateMap(): Map<string, NodeSavedState> {
   return (stores.stateStore ??= new Map());
 }
-function sessionMap(): Map<string, NodeSavedSession> {
+function sessionMap(): SessionBackend {
   return (stores.sessionStore ??= new Map());
+}
+
+/**
+ * Install the session store's backing map (once per process; later calls are
+ * ignored so every client keeps sharing the same one). Must run before the
+ * first session read or write.
+ */
+export function setSessionBackend(create: () => SessionBackend): void {
+  stores.sessionStore ??= create();
 }
 function nonceTagMap(): Map<string, OAuthClientTag> {
   return (stores.nonceTags ??= new Map());

@@ -36,6 +36,13 @@ COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 COPY --from=builder --chown=node:node /app/public ./public
 
+# Mount point for TVLOG_DATA_DIR (durable sign-ins: OAuth sessions, the OAuth
+# signing key, app-password tokens). Owned by `node` (uid 1000) and 0700, so a
+# named volume mounted here inherits that ownership on first use. Holds
+# credentials: mount a private volume, never a shared or world-readable path.
+# Without TVLOG_DATA_DIR the app keeps sign-ins in memory (lost on restart).
+RUN mkdir -p /data && chown node:node /data && chmod 700 /data
+
 USER node
 EXPOSE 3000
 CMD ["node", "server.js"]

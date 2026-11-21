@@ -2,6 +2,17 @@ services:
   tvlog:
     image: registry.sims.computer/tvlog:latest
     env_file: .env
+    environment:
+      # Durable sign-ins (OAuth sessions + signing key) so a deploy doesn't
+      # sign everyone out. Credentials live here: keep the volume private.
+      TVLOG_DATA_DIR: /data
+    volumes:
+      - tvlog-data:/data
     ports:
       - "3000:3000"
     restart: unless-stopped
+
+volumes:
+  # Named volume: Docker seeds it from the image's /data (owned by node,
+  # uid 1000, mode 0700), so the non-root app user can write it.
+  tvlog-data:

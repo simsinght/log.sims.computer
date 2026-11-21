@@ -13,9 +13,19 @@ function sessionPassword(): string {
   return DEV_SECRET;
 }
 
+// How long a sign-in lasts on a device: 400 days, the longest cookie lifetime
+// browsers honour (Chrome clamps Max-Age to 400 days). iron-session's default
+// was 14 days from sign-in, never extended, so the installed PWA signed out
+// every two weeks regardless of use. The seal's own expiry is the same TTL;
+// iron-session sets the cookie's Max-Age to it minus 60s of clock skew.
+// Revocation still works: sign-out clears the cookie, and a cookie whose
+// OAuth session is gone server-side is treated as signed out.
+export const SESSION_TTL_SECONDS = 400 * 24 * 60 * 60;
+
 export const sessionOptions: SessionOptions = {
   cookieName: SESSION_COOKIE,
   password: sessionPassword(),
+  ttl: SESSION_TTL_SECONDS,
   cookieOptions: {
     httpOnly: true,
     sameSite: "lax",
