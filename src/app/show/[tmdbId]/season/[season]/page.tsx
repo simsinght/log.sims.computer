@@ -1,9 +1,11 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSeasonEpisodes, getShowDetail, isConfigured } from "@/lib/tmdb";
 import { errFields } from "@/lib/atproto/spaces";
 import EpisodeList from "@/components/EpisodeList";
 import { SeasonProgress } from "@/components/WatchedMarkers";
+import { ShowNotes } from "@/components/ShowNotes";
 import { getShowWatchState } from "@/lib/showState";
 import { parseRouteInt, seasonHref, showHref } from "@/lib/routes";
 import {
@@ -110,6 +112,12 @@ export default async function SeasonPage({
             />
           )}
         </div>
+
+        {/* After the episodes, above the season links that close the page;
+            streams in (the first read builds the diary index). */}
+        <Suspense fallback={null}>
+          <ShowNotes tmdbId={show.tmdbId} season={seasonNumber} />
+        </Suspense>
 
         {(prevSeason || nextSeason) && (
           <nav className="mt-8 flex justify-between gap-4 border-t border-gray-800/70 pt-4 text-sm">
