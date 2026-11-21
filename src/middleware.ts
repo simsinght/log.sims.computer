@@ -9,8 +9,9 @@ import { PATH_HEADER, isPublicPath, loginPath } from "@/lib/authGate";
 // unseal and is treated as signed out.
 //
 // What this cannot see: whether the OAuth token behind a well-formed cookie
-// still exists (the OAuth store is in-memory and wiped on restart). Pages and
-// API routes do that real check themselves via getAuthedAgent().
+// still exists (revoked, failed to refresh, or — without TVLOG_DATA_DIR —
+// wiped by a restart). Pages and API routes do that real check themselves via
+// getAuthedAgent().
 
 async function sessionDid(request: NextRequest): Promise<string | null> {
   const seal = request.cookies.get(SESSION_COOKIE)?.value;
