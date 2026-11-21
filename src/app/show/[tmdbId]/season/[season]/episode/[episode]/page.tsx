@@ -229,18 +229,6 @@ export default async function EpisodePage({
             <ClampedText text={episode.overview} className="mt-4" />
           )}
 
-          {/* Your own note(s) on this episode, under TMDB's synopsis and above
-              the cast; streams in (the first read builds the diary index). */}
-          {state.signedIn && (
-            <Suspense fallback={null}>
-              <EpisodeNote
-                tmdbId={show.tmdbId}
-                season={seasonNumber}
-                episode={episodeNumber}
-              />
-            </Suspense>
-          )}
-
           {detail ? (
             <PeopleRow
               idPrefix="episode-people"
@@ -254,6 +242,17 @@ export default async function EpisodePage({
             <p className="mt-8 text-sm text-gray-500">
               Couldn&apos;t load the cast for this episode.
             </p>
+          )}
+
+          {/* Your own note(s) on this episode, below the cast row; streams in (the first read builds the diary index). */}
+          {state.signedIn && (
+            <Suspense fallback={null}>
+              <EpisodeNote
+                tmdbId={show.tmdbId}
+                season={seasonNumber}
+                episode={episodeNumber}
+              />
+            </Suspense>
           )}
 
           {(prev || next) && (

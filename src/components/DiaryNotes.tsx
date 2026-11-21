@@ -200,15 +200,15 @@ function NoteCard({
 }) {
   const [editing, setEditing] = useState(false);
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 pb-3">
-      <div className="flex min-h-11 items-center gap-2">
+    <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 pb-2.5 pt-2">
+      <div className="mb-1.5 flex items-center gap-2">
         <div className="min-w-0 flex-1 text-xs text-gray-500">{heading}</div>
         {!editing && (
           <button
             type="button"
             onClick={() => setEditing(true)}
             aria-label={editLabel}
-            className="-mr-3 flex min-h-11 shrink-0 items-center gap-1.5 px-3 text-sm font-medium text-gray-400 transition-colors hover:text-white"
+            className="-my-3 -mr-3 flex min-h-11 shrink-0 items-center gap-1.5 px-3 text-sm font-medium text-gray-400 transition-colors hover:text-white"
           >
             <PencilIcon className="h-3.5 w-3.5" />
             Edit
@@ -227,7 +227,7 @@ function NoteCard({
           }}
         />
       ) : (
-        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-200">
+        <p className="whitespace-pre-wrap break-words text-sm leading-snug text-gray-200">
           {note}
         </p>
       )}
@@ -290,7 +290,7 @@ export function EpisodeNotes({
   }
 
   return (
-    <div className="mt-4 space-y-2">
+    <div className="mt-6 space-y-2">
       {withNotes.map((w) => (
         <NoteCard
           key={w.rkey}
