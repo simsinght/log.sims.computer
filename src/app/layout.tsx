@@ -4,6 +4,7 @@ import "./globals.css";
 import AppChrome from "@/components/AppChrome";
 import { getSession } from "@/lib/session";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import RememberAccount from "@/components/RememberAccount";
 
 export const metadata: Metadata = {
   title: "tvlog",
@@ -43,6 +44,15 @@ export default async function RootLayout({
         </Suspense>
         {children}
         <ServiceWorkerRegister />
+        {session.did && session.handle && session.method && (
+          <RememberAccount
+            did={session.did}
+            handle={session.handle}
+            method={session.method}
+            displayName={session.displayName}
+            avatar={session.avatar}
+          />
+        )}
       </body>
     </html>
   );
