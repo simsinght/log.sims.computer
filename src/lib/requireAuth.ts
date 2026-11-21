@@ -12,8 +12,8 @@ async function currentPath(): Promise<string> {
 
 /**
  * Server-page guard (defence in depth behind middleware). No session → /login.
- * A cookie the server can no longer back (the in-memory OAuth store was wiped
- * by a deploy/restart) → /api/auth/expired, which clears the dead cookie (a
+ * A cookie the server can no longer back (session revoked or unrefreshable,
+ * or wiped by a restart when TVLOG_DATA_DIR is unset) → /api/auth/expired, which clears the dead cookie (a
  * server component can't) and continues to /login with the same return path.
  */
 export async function requireAgent(): Promise<Agent & { did: string }> {

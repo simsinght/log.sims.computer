@@ -16,6 +16,20 @@ container on port 3000**.
 - **Runtime**: `infra/compose.yaml` as a **Container Manager Project** on
   nimbus, rooted at `~/tvlog/` next to a `.env` (chmod 600) holding exactly:
   `BASE_URL=https://tvlog.sims.computer`, `SESSION_SECRET`, `TMDB_API_KEY`.
+  `SESSION_SECRET` (32+ chars) must be set: without it the cookie is sealed
+  with a dev constant that is in the public source.
+- **Durable sign-ins**: compose sets `TVLOG_DATA_DIR=/data` and mounts the
+  named volume `tvlog-data` there. The image creates `/data` owned by `node`
+  (uid 1000), mode 0700, and Docker seeds a new named volume with that
+  ownership. A bind mount works too, but the host directory must be created
+  first and `chown 1000:1000` / `chmod 700` (Docker creates a missing one as
+  root, which the app can't write). The volume holds credentials — OAuth
+  refresh tokens + DPoP keys (`oauth-sessions.json`), the OAuth client's
+  signing key (`oauth-signing-key.json`), app-password tokens
+  (`password-sessions.json`) — so keep it private and out of any shared or
+  backed-up-in-the-clear folder. `GET /api/healthz` answers
+  `"sessions": "durable"` when it is in use, `"memory"` when not (unset or
+  unwritable; the log then says why).
   **Never set `ATP_TEST_*` in production** — their absence is what disables
   `/api/auth/test-login` and the settings "Load sample export" button.
   `restart: unless-stopped` gives start-on-boot; no Task Scheduler needed.
@@ -30,9 +44,12 @@ container on port 3000**.
 2. Deliver (push+pull, or save/scp/load).
 3. `sudo docker compose up -d` in `~/tvlog` (recreates on new image).
 
-Sessions survive container restarts only as far as cookies go — OAuth state
-and TMDB caches are in-memory and reset (documented single-process
-assumption; see `docs/access-patterns.md`).
+Sign-ins survive restarts and redeploys as long as the `tvlog-data` volume
+does (the session cookie lasts 400 days). Without `TVLOG_DATA_DIR` every
+restart signs everyone out: the OAuth sessions are in memory and the signing
+key is regenerated. In-flight logins (the OAuth state, ~minutes) and the TMDB
+caches are in memory either way (single-process assumption; see
+`docs/access-patterns.md`). Losing the volume just means signing in again.
 
 ## Gotchas learned the hard way
 

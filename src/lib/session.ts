@@ -11,6 +11,10 @@ export interface AppSession {
   handle?: string;
   method?: AuthMethod;
   pdsUrl?: string;
+  // Public profile bits captured at sign-in for the device's remembered
+  // account ("Continue as" on /login). Non-secret; may be absent.
+  displayName?: string;
+  avatar?: string;
   atpSession?: AtpSessionData;
   // Which OAuth client issued this session's token, so it is restored with the
   // matching client_id. Undefined for legacy sessions and app-password logins;

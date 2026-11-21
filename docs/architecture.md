@@ -65,7 +65,8 @@ Invariants worth knowing without reading code:
 
 - **Same-origin rule**: no browser request ever leaves the app's origin — TMDB data comes through the proxy routes, posters through `/_next/image`. Keeps the TMDB key server-side and the whole app observable to Aviator verify's collector (which drops cross-origin traffic).
 - **Two auth paths**: OAuth (confidential client, DPoP) for humans; app-password sessions for the importer and automation. `/api/auth/test-login` is env-gated — active only where `ATP_TEST_*` secrets exist (preview), absent in production.
-- **Single-process assumptions**: OAuth state and the TMDB cache are in-memory. Fine for one instance; these move to the appview's store when it exists.
+- **Sign-in state**: the iron-session cookie (400 days) names the DID; the tokens behind it live server-side — OAuth sessions and the client signing key, plus the latest rotated app-password tokens — in JSON files under `TVLOG_DATA_DIR` (`src/lib/durableStore.ts`), so a restart doesn't sign anyone out. Unset (dev), they are in memory. The device remembers accounts in `localStorage` (`tvlog.rememberedAccounts`) for one-tap "Continue as" on `/login`.
+- **Single-process assumptions**: OAuth login state (one round trip) and the TMDB cache are in-memory. Fine for one instance; these move to the appview's store when it exists.
 
 ## Deeper dives
 

@@ -7,7 +7,8 @@ import { BASE_URL } from "@/config/baseUrl";
 export const runtime = "nodejs";
 
 // Landing spot for a page that found a well-formed cookie the server can't
-// back (OAuth store wiped by a restart). Clears the cookie only if it really is
+// back (session revoked, unrefreshable, or wiped by a restart when
+// TVLOG_DATA_DIR is unset). Clears the cookie only if it really is
 // dead — a live session just continues to `next` — so a stray link here can't
 // sign anyone out.
 export async function GET(request: NextRequest) {

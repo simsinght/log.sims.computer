@@ -2,7 +2,9 @@ import { AtpAgent } from "@atproto/api";
 import { resolveIdentity } from "@/lib/atproto/identity";
 import { initSpacesForSession } from "@/lib/atproto/spaces";
 import { isSpacesPdsUrl } from "@/lib/atproto/spaces-hosts";
+import { fetchPublicProfile } from "@/lib/atproto/publicProfile";
 import { getSession } from "@/lib/session";
+import { savePasswordSession } from "@/lib/atproto/passwordTokens";
 
 export async function establishPasswordSession(
   handle: string,
@@ -16,6 +18,9 @@ export async function establishPasswordSession(
     throw new Error("Login did not establish a session");
   }
 
+  // A fresh sign-in supersedes any tokens kept from an earlier one.
+  savePasswordSession(agent.session);
+
   const session = await getSession();
   session.did = agent.session.did;
   session.handle = agent.session.handle;
@@ -27,7 +32,12 @@ export async function establishPasswordSession(
   session.spacesCapable = undefined;
   session.spacesUnauthorized = undefined;
   session.spacesExpected = isSpacesPdsUrl(pdsUrl);
-  await initSpacesForSession(agent, session);
+  const [profile] = await Promise.all([
+    fetchPublicProfile(agent.session.did),
+    initSpacesForSession(agent, session),
+  ]);
+  session.displayName = profile.displayName;
+  session.avatar = profile.avatar;
   await session.save();
 
   return { did: agent.session.did, handle: agent.session.handle };

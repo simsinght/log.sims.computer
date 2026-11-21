@@ -4,6 +4,7 @@ import { getOAuthClient, resolveClientTagFromState } from "@/lib/atproto/oauth";
 import { resolveIdentity } from "@/lib/atproto/identity";
 import { initSpacesForSession } from "@/lib/atproto/spaces";
 import { isSpacesPdsUrl } from "@/lib/atproto/spaces-hosts";
+import { fetchPublicProfile } from "@/lib/atproto/publicProfile";
 import { getSession } from "@/lib/session";
 import { BASE_URL } from "@/config/baseUrl";
 import { NEXT_COOKIE, safeNextPath } from "@/lib/authGate";
@@ -43,7 +44,12 @@ export async function GET(request: NextRequest) {
     // Allowlisted spaces host (by the resolved PDS, or by the login route having
     // picked the spaces client for it): routing fails closed for this account.
     session.spacesExpected = tag === "spaces" || isSpacesPdsUrl(pdsUrl);
-    await initSpacesForSession(new Agent(oauthSession), session);
+    const [profile] = await Promise.all([
+      fetchPublicProfile(did),
+      initSpacesForSession(new Agent(oauthSession), session),
+    ]);
+    session.displayName = profile.displayName;
+    session.avatar = profile.avatar;
     await session.save();
 
     // Back to where the auth gate sent us from (same-origin path only).

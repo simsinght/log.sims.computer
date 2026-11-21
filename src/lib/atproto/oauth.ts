@@ -1,8 +1,16 @@
 import { NodeOAuthClient } from "@atproto/oauth-client-node";
 import { JoseKey } from "@atproto/jwk-jose";
 import { BASE_URL } from "@/config/baseUrl";
+import path from "node:path";
+import {
+  dataDir,
+  openKeyValueMap,
+  readJsonFile,
+  writeFileAtomic,
+} from "@/lib/durableStore";
 import {
   resolveClientTagFromState,
+  setSessionBackend,
   sharedSessionStore,
   taggedStateStore,
   type OAuthClientTag,
@@ -81,8 +89,40 @@ const globals = globalThis as typeof globalThis & {
 globals.__atprotoOAuth ??= {};
 const store = globals.__atprotoOAuth;
 
+const SIGNING_KID = "log-sims-oauth";
+const SIGNING_KEY_FILE = "oauth-signing-key.json";
+
+// The confidential client's private_key_jwt key. The authorization server ties
+// every refresh token to the key that obtained it, so a key regenerated on
+// boot (the old behaviour) breaks every session's next refresh even if the
+// session store survived. With TVLOG_DATA_DIR set the key is generated once
+// and kept in the data dir; without it, a fresh key per process as before.
+async function loadOrCreateSigningKey(): Promise<JoseKey> {
+  const dir = dataDir();
+  if (!dir) return JoseKey.generate(["ES256"], SIGNING_KID);
+
+  const file = path.join(dir, SIGNING_KEY_FILE);
+  const saved = readJsonFile<Record<string, unknown>>(file);
+  if (saved) {
+    try {
+      return await JoseKey.fromJWK(saved, SIGNING_KID);
+    } catch {
+      console.error("[oauth] stored signing key unusable; generating a new one");
+    }
+  }
+  const key = await JoseKey.generate(["ES256"], SIGNING_KID);
+  try {
+    writeFileAtomic(file, JSON.stringify(key.privateJwk));
+  } catch (err) {
+    console.error("[oauth] could not persist signing key; it will change on restart", {
+      code: (err as { code?: string })?.code,
+    });
+  }
+  return key;
+}
+
 function getSigningKey(): Promise<JoseKey> {
-  store.keyPromise ??= JoseKey.generate(["ES256"], "log-sims-oauth");
+  store.keyPromise ??= loadOrCreateSigningKey();
   return store.keyPromise;
 }
 
@@ -93,6 +133,9 @@ export async function getPublicJwks() {
 
 async function buildClient(tag: OAuthClientTag): Promise<NodeOAuthClient> {
   const key = await getSigningKey();
+  // Durable (file-backed) when TVLOG_DATA_DIR is set, else in memory. Installed
+  // once; both clients then share it.
+  setSessionBackend(() => openKeyValueMap("oauth-sessions"));
   return new NodeOAuthClient({
     clientMetadata: tag === "spaces" ? spacesClientMetadata() : clientMetadata(),
     keyset: [key],
