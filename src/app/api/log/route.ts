@@ -6,6 +6,7 @@ import {
   createWatch,
   upsertListItemWithHistory,
 } from "@/lib/atproto/records";
+import { recordWatchWrite } from "@/lib/watchIndex";
 
 export const runtime = "nodejs";
 
@@ -134,6 +135,16 @@ export async function POST(request: NextRequest) {
       },
       routing.diary,
     );
+    // Keep the Notes index (show/season/episode pages) current without a
+    // rescan. Same fields createWatch wrote.
+    recordWatchWrite(did, routing.diary, watch.uri.split("/").pop() ?? "", {
+      tmdbId: String(tmdbId),
+      mediaType,
+      watchedAt,
+      season,
+      episode,
+      note,
+    });
 
     return NextResponse.json({
       listItemUri: subject.uri,

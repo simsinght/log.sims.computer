@@ -12,6 +12,7 @@
 import type { Agent } from "@atproto/api";
 import type { ImportCounts, ImportPlan, ImportProgress, ImportResult } from "./importer.ts";
 import { executeImport } from "./importer.ts";
+import { invalidateWatchIndex } from "@/lib/watchIndex";
 
 export type JobPhase = "parsing" | "importing" | "done" | "error";
 
@@ -106,7 +107,10 @@ export function runJobInBackground(
     })
     .catch((err: unknown) => {
       failJob(job, err instanceof Error ? err.message : "Import failed");
-    });
+    })
+    // The import wrote diary records behind the Notes index's back (even a
+    // failed run may have written some); drop it so the next read rebuilds.
+    .finally(() => invalidateWatchIndex(did));
 }
 
 export type { ImportCounts };
