@@ -5,6 +5,7 @@ import AppChrome from "@/components/AppChrome";
 import { getSession } from "@/lib/session";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import RememberAccount from "@/components/RememberAccount";
+import Toaster from "@/components/Toaster";
 
 export const metadata: Metadata = {
   title: "tvlog",
@@ -53,6 +54,7 @@ export default async function RootLayout({
             avatar={session.avatar}
           />
         )}
+        <Toaster />
       </body>
     </html>
   );

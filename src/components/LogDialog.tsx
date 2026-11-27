@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { showToast } from "@/components/Toaster";
 import WheelDatePicker from "@/components/WheelDatePicker";
 import { hasEarlierUnwatched, type EpisodeRef } from "@/lib/nextEpisode";
 
@@ -144,11 +145,8 @@ export default function LogDialog({
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
   const [catchUp, setCatchUp] = useState(false);
   const [catchUpPlan, setCatchUpPlan] = useState<CatchUpPlan | null>(null);
-  const [catchUpAdded, setCatchUpAdded] = useState(0);
-  const [catchUpWarning, setCatchUpWarning] = useState<string | null>(null);
   const dryRunSeq = useRef(0);
 
   // "Catch up" is offered only when ticking it would backfill at least one
@@ -535,7 +533,6 @@ export default function LogDialog({
   async function onSubmit() {
     setSubmitting(true);
     setError(null);
-    setCatchUpWarning(null);
     try {
       const watchedAt = currentWatchedAt();
       const res = await fetch("/api/log", {
@@ -560,7 +557,9 @@ export default function LogDialog({
       }
 
       // The primary log succeeded from here on, so a catch-up failure is a
-      // warning on the success panel rather than a failed submit.
+      // warning toast rather than a failed submit.
+      let added = 0;
+      let warning: string | null = null;
       if (catchUpEligible && catchUp) {
         try {
           const catchUpRes = await fetch("/api/log/catch-up", {
@@ -578,16 +577,27 @@ export default function LogDialog({
           if (!catchUpRes.ok) {
             throw new Error(body.error ?? "Failed to catch up");
           }
-          setCatchUpAdded(typeof body.added === "number" ? body.added : 0);
+          added = typeof body.added === "number" ? body.added : 0;
         } catch (err) {
-          setCatchUpWarning(
-            err instanceof Error ? err.message : "Failed to catch up",
-          );
+          warning = err instanceof Error ? err.message : "Failed to catch up";
         }
       }
 
-      setDone(true);
+      // No success panel: the sheet closes and a toast confirms.
+      if (warning) {
+        showToast(
+          `Logged ${episodeLabel}, but catching up failed: ${warning}`,
+          "warning",
+        );
+      } else {
+        showToast(
+          added > 0
+            ? `Logged ${target.title} and ${plural(added, "earlier episode")}.`
+            : `Logged ${target.title}.`,
+        );
+      }
       onLogged?.();
+      onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to log");
     } finally {
@@ -645,29 +655,7 @@ export default function LogDialog({
           </div>
         </div>
 
-        {done ? (
-          <div className="space-y-4 px-6 pb-6">
-            <div className="rounded-lg border border-green-900/60 bg-green-950/30 px-4 py-3 text-sm text-green-300">
-              <p>Logged {target.title}.</p>
-              {catchUpAdded > 0 && (
-                <p className="mt-1">
-                  Also logged {plural(catchUpAdded, "earlier episode")}.
-                </p>
-              )}
-            </div>
-            {catchUpWarning && (
-              <div className="rounded-lg border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-300">
-                Logged {episodeLabel}, but catching up failed: {catchUpWarning}
-              </div>
-            )}
-            <button
-              onClick={onClose}
-              className="w-full rounded-lg border border-gray-700 px-4 py-2.5 text-sm font-medium text-gray-200 transition-colors hover:border-gray-500 hover:text-white"
-            >
-              Done
-            </button>
-          </div>
-        ) : (
+        {(
           <div className="flex min-h-0 flex-1 flex-col">
             <div
               ref={scrollRef}
